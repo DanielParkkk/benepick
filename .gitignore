@@ -1,11 +1,29 @@
+# ── 베네픽 프로젝트 ──
 venv/
-data/raw/
-data/processed/
-chroma_db/
 .env
-__pycache__/
-*.pyc
-*.xlsx
-*.npy
+chroma_db/
 rag/data/
 notepad .env.txt
+
+# ── 빌드/캐시 ──
+__pycache__/
+*.py[codz]
+*.pyc
+*.npy
+*.xlsx
+
+# ── 패키징 ──
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ── 환경 ──
+.venv
+env/
+ENV/
+
+# ── 기타 ──
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
