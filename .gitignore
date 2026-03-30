@@ -1,0 +1,11 @@
+venv/
+data/raw/
+data/processed/
+chroma_db/
+.env
+__pycache__/
+*.pyc
+*.xlsx
+*.npy
+rag/data/
+notepad .env.txt

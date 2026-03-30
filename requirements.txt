@@ -1,0 +1,13 @@
+requests
+pandas
+numpy
+python-dotenv
+sentence-transformers
+chromadb
+rank-bm25
+langchain
+langchain-openai
+openai
+FlagEmbedding
+faiss-cpu
+ragas

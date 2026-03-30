@@ -1,0 +1,308 @@
+import os
+import time
+from datetime import datetime
+from dotenv import load_dotenv
+from searcher import HybridSearcher
+from langchain_ollama import ChatOllama
+from langchain_core.messages import HumanMessage, SystemMessage
+from FlagEmbedding import FlagReranker
+
+load_dotenv()
+
+# ── 전역 초기화 ──
+searcher = HybridSearcher()
+llm = ChatOllama(
+    model="gemma3:1b",  # 4b → 1b로 교체
+    temperature=0.3,
+)
+reranker = FlagReranker('BAAI/bge-reranker-v2-m3', use_fp16=True)
+
+# ── 품질 기준 ──
+QUALITY_HIGH   = 0.7
+QUALITY_MEDIUM = 0.4
+
+
+# ── 응답 형식 헬퍼 ──
+def success_response(data: dict) -> dict:
+    """팀 공통 성공 응답 형식"""
+    return {
+        "success": True,
+        "data": data,
+        "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    }
+
+def error_response(error_code: str, error_message: str) -> dict:
+    """팀 공통 실패 응답 형식"""
+    return {
+        "success": False,
+        "error_code": error_code,
+        "error_message": error_message,
+        "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    }
+
+
+# ── HyDE: 조건부 실행 ──
+# 현재 미사용 — 조건부 HyDE 전환 시 사용 예정
+def is_complex(query: str) -> bool:
+    """복지 조건어 2개 이상이면 복잡한 질문으로 판단"""
+    keywords = ['청년', '소득', '지원', '신청', '조건', '자격', '가구', '주거']
+    count = sum(1 for k in keywords if k in query)
+    return len(query) > 15 and count >= 2
+
+# 현재 미사용 — 실험 결과 OFF가 더 좋아서 제거
+# def hyde_rewrite(query: str) -> str:
+#     messages = [
+#         SystemMessage(content="당신은 한국 복지 정책 전문가입니다."),
+#         HumanMessage(content=f"""다음 질문에 대한 가상의 복지 정책 문서를 2~3문장으로 작성하세요.
+# 질문: {query}
+# 가상 문서:""")
+#     ]
+#     response = llm.invoke(messages)
+#     print(f"[HyDE] 가상 문서 생성 완료")
+#     return response.content
+
+
+# ── Reranking ──
+def rerank(query: str, results: list, top_k: int = 5) -> list:
+    """
+    bge-reranker-v2-m3 로 정밀 재정렬
+    score(float 0~1) 업데이트 후 반환
+    """
+    if not results:
+        return []
+
+    texts = [r['evidence_text'] for r in results]
+    pairs = [[query, text] for text in texts]
+    scores = reranker.compute_score(pairs, normalize=True)
+
+    # score 업데이트 (팀 규칙: float 0~1)
+    for result, score in zip(results, scores):
+        result['score'] = round(float(score), 4)
+
+    reranked = sorted(results, key=lambda x: x['score'], reverse=True)
+    return reranked[:top_k]
+
+
+# ── CRAG 품질 검증 ──
+def crag_quality_check(query: str, results: list) -> list:
+    """score 평균으로 품질 판단 후 3단계 분기"""
+    if not results:
+        return _fallback(query)
+
+    # score는 float 0~1 사이 (팀 규칙)
+    scores = [r['score'] for r in results]
+    quality = sum(scores) / len(scores)
+    print(f"[CRAG] 품질 점수: {quality:.3f}")
+
+    if quality >= QUALITY_HIGH:
+        print("[CRAG] 품질 양호 → 원본 결과 사용")
+        return results
+
+    elif quality >= QUALITY_MEDIUM:
+        print("[CRAG] 품질 보통 → 조건 완화 재검색")
+        relaxed = relax_query(query)
+        results2 = searcher.search(relaxed, top_k=25, alpha=0.6)
+        return rerank(query, results2, top_k=5)
+
+    else:
+        print("[CRAG] 품질 낮음 → 카테고리 폴백")
+        return _fallback(query)
+
+
+def relax_query(query: str) -> str:
+    """지역/가구 수 같은 구체적 조건어 제거"""
+    stopwords = [
+        '서울', '부산', '대구', '인천', '광주', '대전',
+        '1인', '2인', '3인', '4인', '가구', '세대'
+    ]
+    relaxed = query
+    for word in stopwords:
+        relaxed = relaxed.replace(word, '').strip()
+    relaxed = ' '.join(relaxed.split())
+    print(f"[CRAG] 완화된 쿼리: '{query}' → '{relaxed}'")
+    return relaxed
+
+
+def get_category_query(query: str) -> str:
+    """구체적 쿼리 → 상위 카테고리로 변환"""
+    category_map = {
+        '월세': '청년 주거 지원',
+        '전세': '청년 주거 지원',
+        '취업': '청년 고용 지원',
+        '실업': '청년 고용 지원',
+        '생계': '저소득 생활 지원',
+        '의료': '의료비 지원',
+        '출산': '출산 육아 지원',
+        '육아': '출산 육아 지원',
+        '노인': '노인 복지 지원',
+        '장애': '장애인 복지 지원',
+    }
+    for keyword, category in category_map.items():
+        if keyword in query:
+            return category
+    return query
+
+
+def _fallback(query: str) -> list:
+    """상위 카테고리로 폴백 검색"""
+    fallback_query = get_category_query(query)
+    print(f"[CRAG] 폴백 쿼리: '{fallback_query}'")
+    return searcher.search(fallback_query, top_k=5, alpha=0.6)
+
+
+# ── LLM 답변 생성 ──
+def generate_answer(query: str, docs: list, lang_code: str = "ko") -> str:
+    """
+    검색된 문서 기반 최종 답변 생성
+    lang_code: "ko"/"en"/"vi"/"zh" (팀 규칙 — ISO 639-1)
+    """
+    context = "\n\n".join([
+        f"[{i+1}] {d['policy_name']}\n{d['evidence_text']}"
+        for i, d in enumerate(docs)
+    ])
+
+    lang_prompt = {
+        "ko": "한국어로 답변하세요.",
+        "en": "Please answer in English.",
+        "vi": "Vui lòng trả lời bằng tiếng Việt.",
+        "zh": "请用中文回答。",
+    }.get(lang_code, "한국어로 답변하세요.")
+
+    messages = [
+        SystemMessage(content=f"""당신은 한국 복지 정책 추천 AI입니다.
+주어진 문서를 바탕으로 사용자 질문에 답변하세요.
+- 관련 정책명을 명확히 언급하세요
+- 지원 대상, 지원 내용, 신청 방법을 간결하게 설명하세요
+- 문서에 없는 내용은 추측하지 마세요
+- {lang_prompt}"""),
+        HumanMessage(content=f"질문: {query}\n\n참고 문서:\n{context}\n\n답변:")
+    ]
+
+    response = llm.invoke(messages)
+    return response.content
+
+
+def benepick_rag(
+    user_query: str,
+    lang_code: str = "ko"
+) -> dict:
+    """
+    베네픽 RAG 메인 파이프라인
+    ① 하이브리드 검색 → ② Reranking
+    → ③ CRAG 품질 검증 → ④ LLM 답변 생성
+
+    반환값: 팀 공통 성공/실패 응답 형식
+    """
+    print(f"\n{'='*50}")
+    print(f"질문: {user_query}")
+    print(f"{'='*50}")
+
+    try:
+        # ① HyDE 제거 — 실험 결과 OFF가 품질/속도 모두 유리
+        search_query = user_query
+        print(f"[HyDE 제거] 원본 쿼리로 검색")
+
+        # ② 하이브리드 검색 (BM25 + 벡터)
+        results = searcher.search(search_query, top_k=25, alpha=0.6)
+        if not results:
+            return error_response("SEARCH_FAILED", "검색 결과가 없습니다.")
+        print(f"[검색] {len(results)}개 후보 검색 완료")
+
+        # ③ Reranking
+        reranked = rerank(user_query, results, top_k=5)
+        print(f"[Rerank] {len(reranked)}개로 압축")
+
+        # ④ CRAG 품질 검증
+        final_docs = crag_quality_check(user_query, reranked)
+        print(f"[CRAG] 최종 {len(final_docs)}개 문서 확정")
+
+        # ⑤ LLM 답변 생성
+        answer = generate_answer(user_query, final_docs, lang_code)
+
+        # ── 반환 (팀 공통 응답 형식 + 변수명 규칙) ──
+        return success_response({
+            "query":        user_query,
+            "answer":       answer,
+            "lang_code":    lang_code,           # string "ko"/"en" 등
+            "docs_used":    [
+                {
+                    "policy_id":   d["policy_id"],    # string "101"
+                    "chunk_id":    d["chunk_id"],      # string "101_01"
+                    "policy_name": d["policy_name"],
+                    "score":       round(float(d["score"]), 4),  # float 0~1
+                    "rank":        d["rank"],          # int, 1부터 시작
+                }
+                for d in final_docs
+            ],
+            "doc_count":    len(final_docs),      # int
+        })
+
+    except Exception as e:
+        print(f"[ERROR] {e}")
+        return error_response("SEARCH_FAILED", str(e))
+
+
+# ── 테스트 ──
+if __name__ == "__main__":
+    import pandas as pd
+
+    test_queries = [
+        ("서울 청년 월세 지원 받을 수 있어요?", "ko"),
+        ("취업 준비생 훈련비 지원", "ko"),
+        ("노인 돌봄 서비스", "ko"),
+        ("청년 창업 지원금 받을 수 있나요?", "ko"),
+        ("대학생 장학금 신청 방법", "ko"),
+        ("장애인 취업 지원 프로그램", "ko"),
+        ("장애인 의료비 지원", "ko"),
+        ("출산 지원금 얼마나 받을 수 있어요?", "ko"),
+        ("어린이집 보육료 지원", "ko"),
+        ("기초생활수급자 혜택 뭐가 있어요?", "ko"),
+        ("다문화 가정 한국어 교육 지원", "ko"),
+        ("disability support benefits", "en"),
+    ]
+
+    alpha_values = [0.3, 0.5, 0.6, 0.7, 0.9]  # 0.6은 현재 기준값
+    results_data = []
+
+    for alpha in alpha_values:
+        print(f"\n{'='*60}")
+        print(f"🔧 alpha = {alpha} 실험")
+        print(f"{'='*60}")
+
+        alpha_qualities = []
+
+        for query, lang in test_queries:
+            # alpha 값 적용해서 검색
+            results = searcher.search(query, top_k=25, alpha=alpha)
+            reranked = rerank(query, results, top_k=5)
+            final_docs = crag_quality_check(query, reranked)
+
+            scores = reranker.compute_score(
+                [[query, searcher.df_chunks[
+                    searcher.df_chunks["chunk_id"] == d["chunk_id"]
+                ].iloc[0]["text"]] for d in final_docs],
+                normalize=True
+            )
+            quality = round(sum(scores) / len(scores), 3)
+            alpha_qualities.append(quality)
+
+            print(f"질문: {query[:20]}... | 품질: {quality:.3f}")
+
+            results_data.append({
+                "alpha":   alpha,
+                "질문":    query,
+                "품질 점수": quality,
+                "사용된 정책": ", ".join([d["policy_name"] for d in final_docs]),
+            })
+
+        avg = round(sum(alpha_qualities) / len(alpha_qualities), 3)
+        print(f"\n▶ alpha={alpha} 평균 품질: {avg:.3f}")
+
+    df = pd.DataFrame(results_data)
+    df.to_excel("실험결과_alpha비교.xlsx", index=False)
+    print("\n\n✅ 엑셀 저장 완료! → 실험결과_alpha비교.xlsx")
+
+    # alpha별 평균 요약
+    summary = df.groupby("alpha")["품질 점수"].mean().round(3)
+    print("\n📊 alpha별 평균 품질 점수")
+    print(summary)
