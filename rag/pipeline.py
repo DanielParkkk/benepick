@@ -48,26 +48,6 @@ def error_response(error_code: str, error_message: str) -> dict:
     }
 
 
-# ── HyDE: 조건부 실행 ──
-# 현재 미사용 — 조건부 HyDE 전환 시 사용 예정
-def is_complex(query: str) -> bool:
-    """복지 조건어 2개 이상이면 복잡한 질문으로 판단"""
-    keywords = ['청년', '소득', '지원', '신청', '조건', '자격', '가구', '주거']
-    count = sum(1 for k in keywords if k in query)
-    return len(query) > 15 and count >= 2
-
-# 현재 미사용 — 실험 결과 OFF가 더 좋아서 제거
-# def hyde_rewrite(query: str) -> str:
-#     messages = [
-#         SystemMessage(content="당신은 한국 복지 정책 전문가입니다."),
-#         HumanMessage(content=f"""다음 질문에 대한 가상의 복지 정책 문서를 2~3문장으로 작성하세요.
-# 질문: {query}
-# 가상 문서:""")
-#     ]
-#     response = llm.invoke(messages)
-#     print(f"[HyDE] 가상 문서 생성 완료")
-#     return response.content
-
 
 # ── Reranking ──
 def rerank(query: str, results: list, top_k: int = 5) -> list:
