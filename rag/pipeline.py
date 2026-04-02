@@ -15,7 +15,7 @@ llm = ChatOllama(
     model="gemma3:1b",  # 4b → 1b로 교체
     temperature=0.3,
 )
-reranker = FlagReranker('BAAI/bge-reranker-v2-m3', use_fp16=True)
+reranker = FlagReranker('BAAI/bge-reranker-v2-m3', use_fp16=True, device='cuda')
 
 # ── 품질 기준 ──
 QUALITY_HIGH   = 0.7
@@ -184,17 +184,21 @@ def generate_answer(query: str, docs: list, lang_code: str = "ko") -> str:
 
 def benepick_rag(
     user_query: str,
-    lang_code: str = "ko"
+    lang_code: str = "ko",
+    user_condition: dict = None,
 ) -> dict:
     """
     베네픽 RAG 메인 파이프라인
     ① 하이브리드 검색 → ② Reranking
     → ③ CRAG 품질 검증 → ④ LLM 답변 생성
 
+    user_condition: 사용자 조건 정보 (예: {"age": 28, "income": "low", "region": "서울"})
     반환값: 팀 공통 성공/실패 응답 형식
     """
     print(f"\n{'='*50}")
     print(f"질문: {user_query}")
+    if user_condition:
+        print(f"조건: {user_condition}")
     print(f"{'='*50}")
 
     try:
@@ -203,10 +207,12 @@ def benepick_rag(
         print(f"[HyDE 제거] 원본 쿼리로 검색")
 
         # ② 하이브리드 검색 (BM25 + 벡터)
+        search_start = time.time()
         results = searcher.search(search_query, top_k=25, alpha=0.6)
+        search_time_ms = round((time.time() - search_start) * 1000)
         if not results:
             return error_response("SEARCH_FAILED", "검색 결과가 없습니다.")
-        print(f"[검색] {len(results)}개 후보 검색 완료")
+        print(f"[검색] {len(results)}개 후보 검색 완료 ({search_time_ms}ms)")
 
         # ③ Reranking
         reranked = rerank(user_query, results, top_k=5)
@@ -221,10 +227,12 @@ def benepick_rag(
 
         # ── 반환 (팀 공통 응답 형식 + 변수명 규칙) ──
         return success_response({
-            "query":        user_query,
-            "answer":       answer,
-            "lang_code":    lang_code,           # string "ko"/"en" 등
-            "docs_used":    [
+            "query":          user_query,
+            "answer":         answer,
+            "lang_code":      lang_code,           # string "ko"/"en" 등
+            "user_condition": user_condition,      # dict or None
+            "search_time_ms": search_time_ms,      # int, 검색 소요 시간(ms)
+            "docs_used":      [
                 {
                     "policy_id":   d["policy_id"],    # string "101"
                     "chunk_id":    d["chunk_id"],      # string "101_01"
@@ -234,7 +242,7 @@ def benepick_rag(
                 }
                 for d in final_docs
             ],
-            "doc_count":    len(final_docs),      # int
+            "doc_count":      len(final_docs),      # int
         })
 
     except Exception as e:
@@ -266,7 +274,7 @@ if __name__ == "__main__":
 
     for alpha in alpha_values:
         print(f"\n{'='*60}")
-        print(f"🔧 alpha = {alpha} 실험")
+        print(f"[alpha = {alpha}] 실험")
         print(f"{'='*60}")
 
         alpha_qualities = []
@@ -300,9 +308,9 @@ if __name__ == "__main__":
 
     df = pd.DataFrame(results_data)
     df.to_excel("실험결과_alpha비교.xlsx", index=False)
-    print("\n\n✅ 엑셀 저장 완료! → 실험결과_alpha비교.xlsx")
+    print("\n\n엑셀 저장 완료! -> 실험결과_alpha비교.xlsx")
 
     # alpha별 평균 요약
     summary = df.groupby("alpha")["품질 점수"].mean().round(3)
-    print("\n📊 alpha별 평균 품질 점수")
+    print("\nalpha별 평균 품질 점수")
     print(summary)
