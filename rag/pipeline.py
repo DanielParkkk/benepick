@@ -10,12 +10,19 @@ from FlagEmbedding import FlagReranker
 load_dotenv()
 
 # ── 전역 초기화 ──
-searcher = HybridSearcher()
+searcher = HybridSearcher(device="cpu")  # 쿼리 임베딩은 CPU로 (Reranker/Ollama와 VRAM 충돌 방지)
 llm = ChatOllama(
     model="gemma3:1b",  # 4b → 1b로 교체
     temperature=0.3,
 )
-reranker = FlagReranker('BAAI/bge-reranker-v2-m3', use_fp16=True, device='cuda')
+# reranker는 첫 검색 요청 시점에 로딩 (import 시 VRAM 충돌 방지)
+_reranker = None
+
+def get_reranker():
+    global _reranker
+    if _reranker is None:
+        _reranker = FlagReranker('BAAI/bge-reranker-v2-m3', use_fp16=True, device='cuda')
+    return _reranker
 
 # ── 품질 기준 ──
 QUALITY_HIGH   = 0.7
@@ -73,7 +80,7 @@ def rerank(query: str, results: list, top_k: int = 5) -> list:
 
     texts = [r['evidence_text'] for r in results]
     pairs = [[query, text] for text in texts]
-    scores = reranker.compute_score(pairs, normalize=True)
+    scores = get_reranker().compute_score(pairs, normalize=True)
 
     # score 업데이트 (팀 규칙: float 0~1)
     for result, score in zip(results, scores):
@@ -285,7 +292,7 @@ if __name__ == "__main__":
             reranked = rerank(query, results, top_k=5)
             final_docs = crag_quality_check(query, reranked)
 
-            scores = reranker.compute_score(
+            scores = get_reranker().compute_score(
                 [[query, searcher.df_chunks[
                     searcher.df_chunks["chunk_id"] == d["chunk_id"]
                 ].iloc[0]["text"]] for d in final_docs],

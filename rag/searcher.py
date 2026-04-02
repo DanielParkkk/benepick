@@ -10,7 +10,7 @@ MODEL_NAME = "BAAI/bge-m3"
 
 
 class HybridSearcher:
-    def __init__(self):
+    def __init__(self, device="cuda"):
         print("하이브리드 검색기 초기화 중...")
 
         # Chroma DB 연결
@@ -25,7 +25,7 @@ class HybridSearcher:
 
         # BGE-M3 모델 로드
         print("BGE-M3 모델 로딩 중...")
-        self.model = SentenceTransformer(MODEL_NAME)
+        self.model = SentenceTransformer(MODEL_NAME, device=device)
 
         # BM25 초기화 (한국어 공백 기준 토크나이징)
         print("BM25 인덱스 생성 중...")
