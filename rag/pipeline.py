@@ -10,13 +10,20 @@ from FlagEmbedding import FlagReranker
 load_dotenv()
 
 # ── 전역 초기화 ──
-searcher = HybridSearcher(device="cpu")  # 쿼리 임베딩은 CPU로 (Reranker/Ollama와 VRAM 충돌 방지)
+# searcher/reranker는 첫 검색 요청 시점에 로딩 (import 시 VRAM/RAM 충돌 방지)
+_searcher = None
+_reranker = None
 llm = ChatOllama(
     model="gemma3:1b",  # 4b → 1b로 교체
     temperature=0.3,
 )
-# reranker는 첫 검색 요청 시점에 로딩 (import 시 VRAM 충돌 방지)
-_reranker = None
+
+def get_searcher():
+    global _searcher
+    if _searcher is None:
+        _searcher = HybridSearcher(device="cpu")
+    return _searcher
+
 
 def get_reranker():
     global _reranker
@@ -88,7 +95,7 @@ def crag_quality_check(query: str, results: list) -> list:
     elif quality >= QUALITY_MEDIUM:
         print("[CRAG] 품질 보통 → 조건 완화 재검색")
         relaxed = relax_query(query)
-        results2 = searcher.search(relaxed, top_k=25, alpha=0.6)
+        results2 = get_searcher().search(relaxed, top_k=25, alpha=0.6)
         return rerank(query, results2, top_k=5)
 
     else:
@@ -134,7 +141,7 @@ def _fallback(query: str) -> list:
     """상위 카테고리로 폴백 검색"""
     fallback_query = get_category_query(query)
     print(f"[CRAG] 폴백 쿼리: '{fallback_query}'")
-    return searcher.search(fallback_query, top_k=5, alpha=0.6)
+    return get_searcher().search(fallback_query, top_k=5, alpha=0.6)
 
 
 # ── LLM 답변 생성 ──
@@ -189,27 +196,24 @@ def benepick_rag(
     print(f"{'='*50}")
 
     try:
-        # ① HyDE 제거 — 실험 결과 OFF가 품질/속도 모두 유리
+        # ① 하이브리드 검색 (BM25 + 벡터)
         search_query = user_query
-        print(f"[HyDE 제거] 원본 쿼리로 검색")
-
-        # ② 하이브리드 검색 (BM25 + 벡터)
         search_start = time.time()
-        results = searcher.search(search_query, top_k=25, alpha=0.6)
+        results = get_searcher().search(search_query, top_k=25, alpha=0.6)
         search_time_ms = round((time.time() - search_start) * 1000)
         if not results:
             return error_response("SEARCH_FAILED", "검색 결과가 없습니다.")
         print(f"[검색] {len(results)}개 후보 검색 완료 ({search_time_ms}ms)")
 
-        # ③ Reranking
+        # ② Reranking
         reranked = rerank(user_query, results, top_k=5)
         print(f"[Rerank] {len(reranked)}개로 압축")
 
-        # ④ CRAG 품질 검증
+        # ③ CRAG 품질 검증
         final_docs = crag_quality_check(user_query, reranked)
         print(f"[CRAG] 최종 {len(final_docs)}개 문서 확정")
 
-        # ⑤ LLM 답변 생성
+        # ④ LLM 답변 생성
         answer = generate_answer(user_query, final_docs, lang_code)
 
         # ── 반환 (팀 공통 응답 형식 + 변수명 규칙) ──
@@ -268,13 +272,13 @@ if __name__ == "__main__":
 
         for query, lang in test_queries:
             # alpha 값 적용해서 검색
-            results = searcher.search(query, top_k=25, alpha=alpha)
+            results = get_searcher().search(query, top_k=25, alpha=alpha)
             reranked = rerank(query, results, top_k=5)
             final_docs = crag_quality_check(query, reranked)
 
             scores = get_reranker().compute_score(
-                [[query, searcher.df_chunks[
-                    searcher.df_chunks["chunk_id"] == d["chunk_id"]
+                [[query, get_searcher().df_chunks[
+                    get_searcher().df_chunks["chunk_id"] == d["chunk_id"]
                 ].iloc[0]["text"]] for d in final_docs],
                 normalize=True
             )
