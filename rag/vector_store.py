@@ -10,7 +10,7 @@ COLLECTION_NAME = "benepick_policies"
 def load_processed_data(path="data/processed/"):
     df_chunks = pd.read_csv(f"{path}chunks.csv")
     embeddings = np.load(f"{path}embeddings.npy")
-    print(f"청크 로드: {len(df_chunks)}개")
+    print(f"정책 데이터 로드: {len(df_chunks)}개")
     print(f"임베딩 로드: {embeddings.shape}")
     return df_chunks, embeddings
 

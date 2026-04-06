@@ -21,7 +21,7 @@ class HybridSearcher:
         df_welfare = pd.read_csv("data/processed/chunks.csv")
         df_gov24 = pd.read_csv("data/processed/gov24/chunks.csv")
         self.df_chunks = pd.concat([df_welfare, df_gov24], ignore_index=True)
-        print(f"전체 청크 로드: {len(self.df_chunks)}개")
+        print(f"전체 정책 로드: {len(self.df_chunks)}개")
 
         # BGE-M3 모델 로드
         print("BGE-M3 모델 로딩 중...")
