@@ -8,6 +8,38 @@ CHROMA_PATH = "./chroma_db"
 COLLECTION_NAME = "benepick_policies"
 MODEL_NAME = "BAAI/bge-m3"
 
+# 한국어 조사/어미 목록 (길이 내림차순 정렬로 최장 매칭)
+_JOSA = sorted([
+    '으로부터', '에게서', '에서부터', '로부터',
+    '에서', '에게', '한테', '으로', '에서',
+    '에서', '까지', '부터', '처럼', '만큼', '보다',
+    '에', '의', '을', '를', '이', '가', '은', '는',
+    '과', '와', '도', '만', '로', '야', '아',
+], key=len, reverse=True)
+
+
+def tokenize(text: str) -> list[str]:
+    """
+    한국어 경량 토크나이저
+    - 공백 분리 후 조사/어미 제거
+    - 원형 + 조사 제거형 둘 다 인덱싱 (재현율 향상)
+    - 2글자 미만 토큰 제거 (노이즈)
+    """
+    tokens = []
+    for word in text.split():
+        if len(word) < 2:
+            continue
+        tokens.append(word)  # 원형 추가
+
+        # 조사 제거 후 어근 추가
+        for josa in _JOSA:
+            if word.endswith(josa) and len(word) - len(josa) >= 2:
+                stem = word[:-len(josa)]
+                tokens.append(stem)
+                break
+
+    return tokens
+
 
 class HybridSearcher:
     def __init__(self, device="cuda"):
@@ -17,25 +49,28 @@ class HybridSearcher:
         client = chromadb.PersistentClient(path=CHROMA_PATH)
         self.collection = client.get_collection(COLLECTION_NAME)
 
-        # 청크 데이터 로드 (복지로 + 정부24 합치기)
+        # 정책 데이터 로드 (복지로 + 정부24)
         df_welfare = pd.read_csv("data/processed/chunks.csv")
-        df_gov24 = pd.read_csv("data/processed/gov24/chunks.csv")
+        df_gov24   = pd.read_csv("data/processed/gov24/chunks.csv")
         self.df_chunks = pd.concat([df_welfare, df_gov24], ignore_index=True)
+
+        # chunk_id 인덱싱 → O(1) 조회
+        self.df_chunks = self.df_chunks.set_index("chunk_id", drop=False)
         print(f"전체 정책 로드: {len(self.df_chunks)}개")
 
         # BGE-M3 모델 로드
         print("BGE-M3 모델 로딩 중...")
         self.model = SentenceTransformer(MODEL_NAME, device=device)
 
-        # BM25 초기화 (한국어 공백 기준 토크나이징)
-        print("BM25 인덱스 생성 중...")
-        tokenized = [text.split() for text in self.df_chunks["text"].tolist()]
+        # BM25 초기화 (Kiwi 형태소 분석)
+        print("BM25 인덱스 생성 중 (Kiwi 형태소 분석)...")
+        tokenized = [tokenize(text) for text in self.df_chunks["text"].tolist()]
         self.bm25 = BM25Okapi(tokenized)
-        self.texts = self.df_chunks["text"].tolist()
+        self.chunk_ids = self.df_chunks["chunk_id"].tolist()
 
         print("초기화 완료!\n")
 
-    def vector_search(self, query, top_k=10):
+    def vector_search(self, query: str, top_k: int = 10) -> dict:
         """벡터 유사도 검색"""
         query_embedding = self.model.encode(
             [query],
@@ -47,77 +82,60 @@ class HybridSearcher:
             n_results=top_k
         )
 
-        # chunk_id → 점수 딕셔너리
-        vector_scores = {}
-        for i, chunk_id in enumerate(results["ids"][0]):
-            # 거리를 유사도로 변환 (1 - 거리)
-            score = 1 - results["distances"][0][i]
-            vector_scores[chunk_id] = score
+        # chunk_id → 점수 딕셔너리 (거리 → 유사도)
+        return {
+            chunk_id: 1 - dist
+            for chunk_id, dist in zip(results["ids"][0], results["distances"][0])
+        }
 
-        return vector_scores
-
-    def bm25_search(self, query, top_k=10):
-        """BM25 키워드 검색"""
-        tokenized_query = query.split()
+    def bm25_search(self, query: str) -> dict:
+        """BM25 키워드 검색 (Kiwi 형태소 분석)"""
+        tokenized_query = tokenize(query)
         scores = self.bm25.get_scores(tokenized_query)
 
-        # 정규화 (0~1 사이)
+        # 정규화 (0~1)
         max_score = max(scores) + 1e-9
         normalized = scores / max_score
 
-        # chunk_id → 점수 딕셔너리
-        bm25_scores = {}
-        chunk_ids = self.df_chunks["chunk_id"].tolist()
-        for i, chunk_id in enumerate(chunk_ids):
-            bm25_scores[chunk_id] = float(normalized[i])
+        return {
+            chunk_id: float(normalized[i])
+            for i, chunk_id in enumerate(self.chunk_ids)
+        }
 
-        return bm25_scores
-
-    def search(self, query, top_k=5, alpha=0.6):
+    def search(self, query: str, top_k: int = 5, alpha: float = 0.6) -> list:
         """
         하이브리드 검색
-        alpha: 벡터 검색 비중 (0~1)
         alpha=0.6 → 벡터 60% + BM25 40%
         """
-        # 1. 벡터 검색
-        vector_scores = self.vector_search(query, top_k=10)
+        # 1. 벡터 검색 + BM25 검색
+        vector_scores = self.vector_search(query, top_k=top_k * 2)
+        bm25_scores   = self.bm25_search(query)
 
-        # 2. BM25 검색
-        bm25_scores = self.bm25_search(query, top_k=10)
-
-        # 3. 점수 합산
+        # 2. 점수 합산
         all_ids = set(vector_scores.keys()) | set(bm25_scores.keys())
-        final_scores = {}
-        for chunk_id in all_ids:
-            v_score = vector_scores.get(chunk_id, 0)
-            b_score = bm25_scores.get(chunk_id, 0)
-            final_scores[chunk_id] = alpha * v_score + (1 - alpha) * b_score
+        final_scores = {
+            cid: alpha * vector_scores.get(cid, 0) + (1 - alpha) * bm25_scores.get(cid, 0)
+            for cid in all_ids
+        }
 
-        # 4. Top-K 추출
-        top_ids = sorted(
-            final_scores,
-            key=final_scores.get,
-            reverse=True
-        )[:top_k]
+        # 3. Top-K 추출
+        top_ids = sorted(final_scores, key=final_scores.get, reverse=True)[:top_k]
 
-        # 5. 결과 조합
+        # 4. 결과 조합 (set_index로 O(1) 조회)
         results = []
         for rank, chunk_id in enumerate(top_ids, 1):
-            row = self.df_chunks[
-                self.df_chunks["chunk_id"] == chunk_id
-            ].iloc[0]
-
+            row = self.df_chunks.loc[chunk_id]
             results.append({
-                "rank":         rank,
-                "chunk_id":     chunk_id,
-                "policy_id":    row["policy_id"],
-                "policy_name":  row["policy_name"],
-                "category":     row["category"],
-                "region":       row["region"],
-                "source_url":   row["source_url"],
-                "score":        round(final_scores[chunk_id], 4),
-                "vector_score": round(vector_scores.get(chunk_id, 0), 4),
-                "bm25_score":   round(bm25_scores.get(chunk_id, 0), 4),
+                "rank":          rank,
+                "chunk_id":      chunk_id,
+                "policy_id":     row["policy_id"],
+                "policy_name":   row["policy_name"],
+                "category":      row["category"],
+                "region":        row["region"],
+                "source_url":    row["source_url"],
+                "score":         round(final_scores[chunk_id], 4),
+                "vector_score":  round(vector_scores.get(chunk_id, 0), 4),
+                "bm25_score":    round(bm25_scores.get(chunk_id, 0), 4),
                 "evidence_text": row["text"],
             })
 
@@ -138,12 +156,11 @@ def print_results(results, query):
 if __name__ == "__main__":
     searcher = HybridSearcher()
 
-    # 테스트 검색
     queries = [
         "서울 청년 월세 지원",
         "취업 준비생 훈련비 지원",
-        "외국인 다문화 가정 복지",
-        "소상공인 자금 지원",
+        "기초연금 받으려면",
+        "실직한 30대 복지 정책",
         "노인 돌봄 서비스",
     ]
 
@@ -151,5 +168,4 @@ if __name__ == "__main__":
         results = searcher.search(query, top_k=3, alpha=0.6)
         print_results(results, query)
 
-    print("\n\n하이브리드 검색 완료!")
-    print("다음 단계: RAG 파이프라인 연결 (pipeline.py)")
+    print("\n하이브리드 검색 완료!")

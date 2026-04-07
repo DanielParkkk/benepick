@@ -322,9 +322,7 @@ if __name__ == "__main__":
             final_docs = crag_quality_check(query, reranked)
 
             scores = get_reranker().compute_score(
-                [[query, get_searcher().df_chunks[
-                    get_searcher().df_chunks["chunk_id"] == d["chunk_id"]
-                ].iloc[0]["text"]] for d in final_docs],
+                [[query, d["evidence_text"]] for d in final_docs],
                 normalize=True
             )
             quality = round(sum(scores) / len(scores), 3)
