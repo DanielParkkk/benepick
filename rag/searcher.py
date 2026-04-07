@@ -1,10 +1,19 @@
 import pandas as pd
 import numpy as np
 import chromadb
+import os
+from pathlib import Path
 from rank_bm25 import BM25Okapi
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROCESSED_PATH = PROJECT_ROOT / "processed"
+CACHE_ROOT = PROJECT_ROOT / ".cache" / "huggingface"
+os.environ.setdefault("HF_HOME", str(CACHE_ROOT))
+os.environ.setdefault("SENTENCE_TRANSFORMERS_HOME", str(CACHE_ROOT / "sentence-transformers"))
+
 from sentence_transformers import SentenceTransformer
 
-CHROMA_PATH = "./chroma_db"
+CHROMA_PATH = str(PROJECT_ROOT)
 COLLECTION_NAME = "benepick_policies"
 MODEL_NAME = "BAAI/bge-m3"
 
@@ -50,8 +59,8 @@ class HybridSearcher:
         self.collection = client.get_collection(COLLECTION_NAME)
 
         # 정책 데이터 로드 (복지로 + 정부24)
-        df_welfare = pd.read_csv("data/processed/chunks.csv")
-        df_gov24   = pd.read_csv("data/processed/gov24/chunks.csv")
+        df_welfare = pd.read_csv(PROCESSED_PATH / "chunks.csv")
+        df_gov24   = pd.read_csv(PROCESSED_PATH / "gov24" / "chunks.csv")
         self.df_chunks = pd.concat([df_welfare, df_gov24], ignore_index=True)
 
         # chunk_id 인덱싱 → O(1) 조회

@@ -1,8 +1,18 @@
 import os
 import time
 from datetime import datetime
+from pathlib import Path
 from dotenv import load_dotenv
-from searcher import HybridSearcher
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+HF_CACHE_ROOT = PROJECT_ROOT / ".cache" / "huggingface"
+os.environ.setdefault("HF_HOME", str(HF_CACHE_ROOT))
+os.environ.setdefault("SENTENCE_TRANSFORMERS_HOME", str(HF_CACHE_ROOT / "sentence-transformers"))
+
+try:
+    from .searcher import HybridSearcher
+except ImportError:
+    from searcher import HybridSearcher
 from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, SystemMessage
 from FlagEmbedding import FlagReranker

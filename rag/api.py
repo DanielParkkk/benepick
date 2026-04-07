@@ -2,7 +2,28 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from pipeline import benepick_rag, get_searcher, rerank, crag_quality_check, generate_answer, success_response, error_response, build_search_query
+try:
+    from .pipeline import (
+        benepick_rag,
+        get_searcher,
+        rerank,
+        crag_quality_check,
+        generate_answer,
+        success_response,
+        error_response,
+        build_search_query,
+    )
+except ImportError:
+    from pipeline import (
+        benepick_rag,
+        get_searcher,
+        rerank,
+        crag_quality_check,
+        generate_answer,
+        success_response,
+        error_response,
+        build_search_query,
+    )
 import time
 from datetime import datetime
 from contextlib import asynccontextmanager
