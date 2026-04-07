@@ -251,7 +251,7 @@ def benepick_rag(
             return error_response("SEARCH_FAILED", "검색 결과가 없습니다.")
         print(f"[검색] {len(results)}개 후보 검색 완료 ({search_time_ms}ms)")
 
-        # ② Reranking
+        # ③ Reranking
         reranked = rerank(user_query, results, top_k=5)
         print(f"[Rerank] {len(reranked)}개로 압축")
 
@@ -272,7 +272,7 @@ def benepick_rag(
             "docs_used":      [
                 {
                     "policy_id":   d["policy_id"],    # string "101"
-                    "chunk_id":    d["chunk_id"],      # string "101_01"
+                    "chunk_id":    d["chunk_id"],      # string, policy_id와 동일
                     "policy_name": d["policy_name"],
                     "score":       round(float(d["score"]), 4),  # float 0~1
                     "rank":        d["rank"],          # int, 1부터 시작
