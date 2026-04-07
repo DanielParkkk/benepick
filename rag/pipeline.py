@@ -14,8 +14,9 @@ load_dotenv()
 _searcher = None
 _reranker = None
 llm = ChatOllama(
-    model="gemma3:1b",  # 4b → 1b로 교체
+    model="gemma3:1b",
     temperature=0.3,
+    num_predict=400,   # 최대 출력 토큰 제한 → 응답 30초 이내 보장
 )
 
 def get_searcher():
