@@ -29,7 +29,7 @@ def get_searcher():
 def get_reranker():
     global _reranker
     if _reranker is None:
-        _reranker = FlagReranker('BAAI/bge-reranker-v2-m3', use_fp16=True, device='cuda')
+        _reranker = FlagReranker('BAAI/bge-reranker-v2-m3', use_fp16=True, device='cpu')
     return _reranker
 
 # ── 품질 기준 ──
@@ -240,10 +240,10 @@ def benepick_rag(
     print(f"{'='*50}")
 
     try:
-        # ① 쿼리 보강 (user_condition 반영)
+        # 쿼리 보강 (user_condition 반영)
         search_query = build_search_query(user_query, user_condition)
 
-        # ② 하이브리드 검색 (BM25 + 벡터)
+        # 하이브리드 검색 (BM25 + 벡터)
         search_start = time.time()
         results = get_searcher().search(search_query, top_k=25, alpha=0.6)
         search_time_ms = round((time.time() - search_start) * 1000)
@@ -251,15 +251,15 @@ def benepick_rag(
             return error_response("SEARCH_FAILED", "검색 결과가 없습니다.")
         print(f"[검색] {len(results)}개 후보 검색 완료 ({search_time_ms}ms)")
 
-        # ③ Reranking
+        # Reranking
         reranked = rerank(user_query, results, top_k=5)
         print(f"[Rerank] {len(reranked)}개로 압축")
 
-        # ③ CRAG 품질 검증
+        # CRAG 품질 검증
         final_docs = crag_quality_check(user_query, reranked)
         print(f"[CRAG] 최종 {len(final_docs)}개 문서 확정")
 
-        # ④ LLM 답변 생성
+        # LLM 답변 생성
         answer = generate_answer(user_query, final_docs, lang_code)
 
         # ── 반환 (팀 공통 응답 형식 + 변수명 규칙) ──
