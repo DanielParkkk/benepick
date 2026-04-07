@@ -307,4 +307,3 @@ if __name__ == "__main__":
         else:
             print(f"❌ 실패: {result['error_message']}")
         print()
-    print(summary)
