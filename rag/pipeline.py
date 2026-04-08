@@ -16,7 +16,7 @@ _reranker = None
 llm = ChatOllama(
     model="gemma3:1b",
     temperature=0.3,
-    num_predict=400,   # 최대 출력 토큰 제한 → 응답 30초 이내 보장
+    num_predict=600,   # 최대 출력 토큰 제한 → 응답 30초 이내 보장 (400→600, 답변 잘림 방지)
 )
 
 def get_searcher():
@@ -182,13 +182,14 @@ def generate_answer(query: str, docs: list, lang_code: str = "ko") -> str:
     }.get(lang_code, "한국어로 답변하세요.")
 
     messages = [
-        SystemMessage(content=f"""당신은 한국 복지 정책 추천 AI입니다.
-주어진 문서를 바탕으로 사용자 질문에 답변하세요.
+        SystemMessage(content=f"""아래 복지 정책 문서를 바탕으로 질문에 답변하세요.
+규칙:
+- 인사말·자기소개 없이 정책 정보로 바로 시작하세요
 - 관련 정책명을 명확히 언급하세요
 - 지원 대상, 지원 내용, 신청 방법을 간결하게 설명하세요
 - 문서에 없는 내용은 추측하지 마세요
 - {lang_prompt}"""),
-        HumanMessage(content=f"질문: {query}\n\n참고 문서:\n{context}\n\n답변:")
+        HumanMessage(content=f"질문: {query}\n\n참고 문서:\n{context}\n\n정책 정보:")
     ]
 
     response = llm.invoke(messages)
