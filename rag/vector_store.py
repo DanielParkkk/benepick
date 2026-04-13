@@ -1,13 +1,20 @@
 ﻿import pandas as pd
 import numpy as np
 import os
+from pathlib import Path
 import chromadb
 
-CHROMA_PATH = "./chroma_db"
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+CHROMA_PATH     = str(_PROJECT_ROOT)
 COLLECTION_NAME = "benepick_policies"
 
+_PROC_PATH  = str(_PROJECT_ROOT / "processed")
+_PROC_GOV24 = str(_PROJECT_ROOT / "processed" / "gov24")
 
-def load_processed_data(path="data/processed/"):
+
+def load_processed_data(path=None):
+    if path is None:
+        path = _PROC_PATH + "/"
     df_chunks = pd.read_csv(f"{path}chunks.csv")
     embeddings = np.load(f"{path}embeddings.npy")
     print(f"정책 데이터 로드: {len(df_chunks)}개")
@@ -85,7 +92,7 @@ if __name__ == "__main__":
     client, collection = save_to_chroma(df_chunks, embeddings)
 
     # 정부24 저장 (나눠서 추가)
-    df_gov24, embeddings_gov24 = load_processed_data(path="data/processed/gov24/")
+    df_gov24, embeddings_gov24 = load_processed_data(path=f"{_PROC_GOV24}/")
 
     metadatas_gov24 = []
     for _, row in df_gov24.iterrows():

@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
+from pathlib import Path
 from sentence_transformers import SentenceTransformer
 from preprocessor import (
     load_data, process_policies,
@@ -8,6 +9,11 @@ from preprocessor import (
 )
 
 MODEL_NAME = "BAAI/bge-m3"
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+_RAW_PATH     = str(_PROJECT_ROOT / "raw")
+_PROC_PATH    = str(_PROJECT_ROOT / "processed")
+_PROC_GOV24   = str(_PROJECT_ROOT / "processed" / "gov24")
 
 
 def create_embeddings(model, records: list) -> np.ndarray:
@@ -50,16 +56,16 @@ if __name__ == "__main__":
 
     # 복지로
     print("\n=== 복지로 임베딩 ===")
-    df = load_data()
+    df = load_data(path=f"{_RAW_PATH}/welfare_policies.csv")
     records = process_policies(df)
     embeddings = create_embeddings(model, records)
-    save_embeddings(records, embeddings, path="data/processed/")
+    save_embeddings(records, embeddings, path=f"{_PROC_PATH}/")
 
     # 정부24
     print("\n=== 정부24 임베딩 ===")
-    df_gov24 = load_gov24_data()
+    df_gov24 = load_gov24_data(path=f"{_RAW_PATH}/gov24_policies.csv")
     records_gov24 = process_gov24_policies(df_gov24)
     embeddings_gov24 = create_embeddings(model, records_gov24)
-    save_embeddings(records_gov24, embeddings_gov24, path="data/processed/gov24/")
+    save_embeddings(records_gov24, embeddings_gov24, path=f"{_PROC_GOV24}/")
 
     print("\n전체 임베딩 파이프라인 완료!")
