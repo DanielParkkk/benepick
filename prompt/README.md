@@ -1,48 +1,93 @@
-## 파일 구성
+## 포함 파일
 
 - `prompts/prompt_summary.txt`
-  - 한국 복지 정책 요약 프롬프트입니다.
-  - 핵심 사실만 추출하고, 없는 사실을 만들지 않으며, 숫자/연령/금액/날짜를 정확히 유지하고, JSON 형식만 출력하도록 합니다.
+  - 한국 복지 정책 요약 프롬프트
+  - 핵심 사실 추출, 환각 방지, 숫자/연령/금액/날짜 보존, JSON-only 출력
 
 - `prompts/prompt_translation.txt`
-  - 한국 복지 정책 번역 프롬프트입니다.
-  - placeholder, 숫자, 백분율, 금액, 날짜, URL, 정책 용어를 보존하도록 합니다.
-  - 출력은 `translated_text` 키 하나만 가진 JSON 형식으로 제한합니다.
+  - 한국 복지 정책 번역 프롬프트
+  - placeholder, 숫자, 백분율, 금액, 날짜, URL, 정책 용어 보존
+  - `translated_text` 키 하나만 가진 JSON 출력
 
 - `prompts/prompt_reject_guide.txt`
-  - 자격 조건 탈락 사유와 해결 가이드 생성 프롬프트입니다.
-  - 룰 엔진 판단 결과를 가장 우선 근거로 사용합니다.
-  - 탈락 사유 1~3개와 실무 행동 가이드 1~3개를 JSON으로 출력하도록 합니다.
+  - 자격 조건 탈락 사유와 해결 가이드 생성 프롬프트
+  - 룰 엔진 판단 결과를 우선 근거로 사용
+  - 탈락 사유 1~3개, 행동 가이드 1~3개 JSON 출력
 
 - `prompt_builder.py`
-  - 위 프롬프트 파일을 불러와 실제 모델 입력 메시지로 조립합니다.
-  - system message, JSON schema, 대상 언어, 용어집, 정책 문맥, 예시를 추가합니다.
-  - 요약, 번역, 탈락 사유/가이드에 대한 엄격한 JSON 스키마를 정의합니다.
+  - 프롬프트 파일을 불러와 실제 모델 입력 메시지로 조립
+  - system message, JSON schema, 대상 언어, 용어집, 정책 문맥, 예시 추가
+  - 요약/번역/탈락 사유 가이드의 JSON schema 정의
 
-## 주요 튜닝 방향
+## 실제 프롬프트 원문
 
-1. JSON 전용 출력
-   - 백엔드와 프론트엔드가 모델 결과를 안정적으로 파싱할 수 있게 했습니다.
+### 1. 정책 요약
 
-2. 환각 방지
-   - 없는 사실, 금액, 날짜, 기관명, 조건을 만들지 않도록 명시했습니다.
+```text
+You are an assistant that extracts the core facts of a Korean welfare policy.
 
-3. 정확한 정보 보존
-   - 숫자, 연령대, 금액, 날짜, URL, placeholder, 정책 용어가 유지되도록 했습니다.
+Goal:
+- Read the policy text.
+- Ignore contact spam, long phone lists, and duplicate agency listings.
+- Return only the core facts needed for a user-facing summary.
 
-4. 룰 엔진 기반 사유 생성
-   - 탈락 사유와 해결 가이드는 룰 엔진 결과를 먼저 근거로 사용하도록 했습니다.
+Rules:
+1. Do not invent missing facts.
+2. Keep numbers, age ranges, amounts, and dates exact.
+3. Each field should be short and factual.
+4. Output JSON only.
+```
 
-5. 다국어 용어집 지원
-   - 번역 프롬프트에는 대상 언어, 관련 용어집, 원문, 정책 문맥, 짧은 예시를 함께 넣습니다.
-   - 지원 대상 언어는 영어(`en`), 중국어(`zh`), 일본어(`ja`), 베트남어(`vi`)입니다.
+### 2. 다국어 번역
 
-6. 스키마 제약 프롬프트
-   - `PromptBuilder`에서 Ollama structured output용 JSON 스키마를 제공합니다.
+```text
+You are an assistant that translates Korean welfare-policy text.
+
+Goal:
+- Translate the source text into the target language accurately and naturally.
+
+Rules:
+1. Do not add or remove facts.
+2. Keep placeholders such as [[PRESERVE_1]] exactly unchanged.
+3. Keep numbers, percentages, money amounts, dates, URLs, and policy terms exact.
+4. Follow the glossary when it is provided.
+5. Output JSON only.
+6. The JSON object must contain exactly one key named translated_text.
+```
+
+지원 언어:
+
+- 영어 `en`
+- 중국어 `zh`
+- 일본어 `ja`
+- 베트남어 `vi`
+
+### 3. 탈락 사유 / 해결 가이드
+
+```text
+You are an assistant that explains welfare-policy eligibility issues.
+
+Goal:
+- Read the user condition, the policy text, and the rule-engine notes.
+- Return short Korean rejection reasons and practical guides.
+
+Rules:
+1. Use the rule-engine result as the first source of truth.
+2. Do not invent amounts, dates, agencies, or conditions that are not in the source.
+3. Return 1 to 3 rejection reasons.
+4. Return 1 to 3 practical guides.
+5. Output JSON only.
+```
+
+## 튜닝 방향
+
+- 모델 응답을 JSON-only로 제한해 백엔드에서 안정적으로 파싱할 수 있게 했습니다.
+- 없는 사실, 금액, 날짜, 기관명, 조건을 만들지 않도록 명시했습니다.
+- 숫자, 연령대, 금액, 날짜, URL, placeholder, 정책 용어를 보존하도록 했습니다.
+- 탈락 사유와 해결 가이드는 룰 엔진 판단 결과를 우선 근거로 사용하도록 했습니다.
+- 번역에는 대상 언어, 용어집, 정책 문맥, 언어별 예시를 함께 넣도록 구성했습니다.
 
 ## 관련 런타임 파일
-
-프롬프트 출력은 아래 파일에서 사용됩니다.
 
 - `summary_service.py`
 - `translation_service.py`
