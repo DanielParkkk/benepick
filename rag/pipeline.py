@@ -13,7 +13,6 @@ try:
     from .searcher import HybridSearcher
 except ImportError:
     from searcher import HybridSearcher
-from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, SystemMessage
 from FlagEmbedding import FlagReranker
 
@@ -23,11 +22,37 @@ load_dotenv()
 # searcher/reranker는 첫 검색 요청 시점에 로딩 (import 시 VRAM/RAM 충돌 방지)
 _searcher = None
 _reranker = None
-llm = ChatOllama(
-    model="gemma3:1b",
-    temperature=0.3,
-    num_predict=400,   # 최대 출력 토큰 제한 → 응답 30초 이내 보장
-)
+
+# ── LLM 초기화 (LLM_PROVIDER 환경변수로 전환) ──
+# LLM_PROVIDER=ollama       → 로컬 Ollama gemma3:1b (기본값)
+# LLM_PROVIDER=huggingface  → Colab HuggingFace Qwen3-4B
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
+
+if LLM_PROVIDER == "huggingface":
+    import torch
+    from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline as hf_pipeline
+    from langchain_huggingface import HuggingFacePipeline, ChatHuggingFace
+
+    _hf_model_id = os.getenv("HF_MODEL_ID", "Qwen/Qwen3-4B")
+    print(f"[LLM] HuggingFace 모델 로딩: {_hf_model_id}")
+    _hf_pipe = hf_pipeline(
+        "text-generation",
+        model=_hf_model_id,
+        torch_dtype=torch.float16,
+        device_map="auto",
+        max_new_tokens=400,
+        temperature=0.3,
+        do_sample=True,
+    )
+    llm = ChatHuggingFace(llm=HuggingFacePipeline(pipeline=_hf_pipe))
+    print(f"[LLM] {_hf_model_id} 로딩 완료")
+else:
+    from langchain_ollama import ChatOllama
+    llm = ChatOllama(
+        model=os.getenv("OLLAMA_MODEL", "gemma3:1b"),
+        temperature=0.3,
+        num_predict=400,   # 최대 출력 토큰 제한 → 응답 30초 이내 보장
+    )
 
 def get_searcher():
     global _searcher
