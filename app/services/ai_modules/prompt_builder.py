@@ -9,7 +9,7 @@ class PromptBuilder:
         "ko": "Korean",
         "en": "English",
         "vi": "Vietnamese",
-        "zh": "Chinese",
+        "zh": "Simplified Chinese",
         "ja": "Japanese",
     }
 
@@ -48,14 +48,17 @@ You are an assistant that translates Korean welfare-policy text.
 
 Goal:
 - Translate the source text into the target language accurately and naturally.
+- Keep the translation useful for foreign residents reading Korean welfare information.
 
 Rules:
 1. Do not add or remove facts.
 2. Keep placeholders such as [[PRESERVE_1]] exactly unchanged.
 3. Keep numbers, percentages, money amounts, dates, URLs, and policy terms exact.
 4. Follow the glossary when it is provided.
-5. Output JSON only.
-6. The JSON object must contain exactly one key named translated_text.
+5. Use only the requested target language, except official Korean policy names may remain in parentheses when needed.
+6. Do not output explanations, Markdown, citations, or extra keys.
+7. Output JSON only.
+8. The JSON object must contain exactly one key named translated_text.
 """.strip()
 
     def __init__(
@@ -186,7 +189,9 @@ Rules:
                 "role": "system",
                 "content": (
                     f"Return only valid JSON matching the schema. "
-                    f"Use only {lang_name}. Keep placeholders unchanged. "
+                    f"Use {lang_name} as the output language. "
+                    f"Do not mix in Korean except official policy names in parentheses. "
+                    f"Keep placeholders unchanged. "
                     f"The only allowed JSON key is translated_text."
                 ),
             },
