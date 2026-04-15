@@ -104,7 +104,7 @@ def main():
     print("=" * 60)
 
     # 공통 LLM / Ragas 초기화
-    llm = ChatOllama(model="gemma3:1b", temperature=0.3)
+    llm = ChatOllama(model="gemma3:4b", temperature=0.3)
     ragas_llm = LangchainLLMWrapper(llm)
     # Ragas 임베딩은 경량 모델 사용 (BGE-M3 중복 로딩 방지)
     ragas_emb = LangchainEmbeddingsWrapper(

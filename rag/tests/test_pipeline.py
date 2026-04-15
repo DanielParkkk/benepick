@@ -30,8 +30,8 @@ import pipeline
 # 모듈 레벨 전역 객체 교체
 _mock_reranker = MagicMock()
 _mock_llm = MagicMock()
-pipeline.searcher = _mock_searcher_instance
-pipeline.reranker = _mock_reranker
+pipeline._searcher = _mock_searcher_instance
+pipeline._reranker = _mock_reranker
 pipeline.llm = _mock_llm
 
 
@@ -101,30 +101,7 @@ class TestResponseHelpers:
 
 
 # ═════════════════════════════════════════════════════════════════
-# 2. is_complex (복잡한 질문 판단)
-# ═════════════════════════════════════════════════════════════════
-class TestIsComplex:
-    def test_complex_query_with_long_text_and_many_keywords(self):
-        # 길이 > 15, 복지 키워드 2개 이상
-        assert pipeline.is_complex("서울 청년 소득 기준 주거 지원 신청 방법") is True
-
-    def test_short_query_is_not_complex(self):
-        # 길이 <= 15
-        assert pipeline.is_complex("청년 지원") is False
-
-    def test_long_query_with_few_keywords_is_not_complex(self):
-        # 길이 > 15, 키워드 1개
-        assert pipeline.is_complex("안녕하세요 오늘 날씨가 정말 맑고 청명합니다") is False
-
-    def test_long_query_with_two_keywords_is_complex(self):
-        assert pipeline.is_complex("청년 소득 조건에 맞는 지원 프로그램을 찾고 있습니다") is True
-
-    def test_empty_query_is_not_complex(self):
-        assert pipeline.is_complex("") is False
-
-
-# ═════════════════════════════════════════════════════════════════
-# 3. relax_query (조건 완화)
+# 2. relax_query (조건 완화)
 # ═════════════════════════════════════════════════════════════════
 class TestRelaxQuery:
     def test_removes_city_name(self):

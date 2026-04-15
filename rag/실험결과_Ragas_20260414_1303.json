@@ -1,0 +1,12 @@
+{
+  "timestamp": "20260414_1303",
+  "total_questions": 30,
+  "faithfulness": 1.0,
+  "answer_relevancy": 0.0909,
+  "average": 0.5454,
+  "vs_baseline": {
+    "faithfulness_delta": 0.0,
+    "answer_relevancy_delta": -0.3501,
+    "average_delta": -0.1751
+  }
+}

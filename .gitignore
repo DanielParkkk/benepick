@@ -209,3 +209,23 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# === Project-specific (RAG / Frontend / Build) ===
+
+# Claude 관련 (로컬 설정)
+.claude/
+
+# ChromaDB / 벡터 DB
+chroma.sqlite3
+rag/chroma_db/
+
+# 벡터 인덱스 파일들
+*.bin
+*.pickle
+
+# 프론트 빌드 캐시
+frontend/tsconfig.tsbuildinfo
+
+# 결과 파일 / 실험 로그
+rag/interim_results_*.json
+rag/*.xlsx
