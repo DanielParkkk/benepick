@@ -1,6 +1,6 @@
 # BenePick AI Modules
 
-이 폴더는 BenePick FastAPI 백엔드에 연결되는 은철 담당 AI 모듈입니다.
+이 폴더는 BenePick FastAPI 백엔드에 연결되는 AI 모듈입니다.
 
 ## 역할
 
@@ -14,7 +14,7 @@
 
 ## 연결 위치
 
-`app.services.ai_enricher.PolicyAIEnricher`가 위 모듈을 묶어서 호출합니다.
+`app.services.detail_enrichment_service.PolicyDetailEnrichmentService`가 위 모듈을 묶어서 호출합니다.
 FastAPI에서는 `GET /api/v1/policies/{policy_id}/detail?lang=...` 응답을 만들 때
 정책 원문과 사용자 조건을 넘겨 요약, 탈락 사유, 보완 가이드를 보강합니다.
 
