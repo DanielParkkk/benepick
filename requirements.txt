@@ -1,5 +1,5 @@
 fastapi
-uvicorn
+uvicorn[standard]
 pydantic-settings
 SQLAlchemy
 psycopg[binary]
@@ -12,11 +12,13 @@ sentence-transformers
 transformers==4.45.2
 chromadb
 rank-bm25
+kiwipiepy
 langchain
 langchain-ollama
+langchain-groq
 langchain-openai
 langchain-community
 openai
 FlagEmbedding
 faiss-cpu
-ragas
+torch

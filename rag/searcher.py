@@ -4,6 +4,7 @@ import chromadb
 import os
 from pathlib import Path
 from rank_bm25 import BM25Okapi
+from kiwipiepy import Kiwi
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PROCESSED_PATH = PROJECT_ROOT / "processed"
@@ -13,49 +14,53 @@ os.environ.setdefault("SENTENCE_TRANSFORMERS_HOME", str(CACHE_ROOT / "sentence-t
 
 from sentence_transformers import SentenceTransformer
 
-CHROMA_PATH = str(PROJECT_ROOT)
+CHROMA_PATH = PROJECT_ROOT / "chroma_db"
 COLLECTION_NAME = "benepick_policies"
 MODEL_NAME = "BAAI/bge-m3"
 
-# 한국어 조사/어미 목록 (길이 내림차순 정렬로 최장 매칭)
-_JOSA = sorted([
-    '으로부터', '에게서', '에서부터', '로부터',
-    '에서', '에게', '한테', '으로', '에서',
-    '에서', '까지', '부터', '처럼', '만큼', '보다',
-    '에', '의', '을', '를', '이', '가', '은', '는',
-    '과', '와', '도', '만', '로', '야', '아',
-], key=len, reverse=True)
+# KIWI_MODEL_PATH: 한글 경로에서 C 확장이 모델을 못 여는 문제 우회 (Windows 로컬 전용)
+# Railway/Linux 등 배포 환경에서는 환경변수 미설정 → kiwipiepy 기본 경로 자동 사용
+_kiwi_model_path = os.environ.get("KIWI_MODEL_PATH") or None
+_kiwi = Kiwi(model_path=_kiwi_model_path, num_workers=-1)
+
+# BM25 대상 품사: 일반명사(NNG) + 고유명사(NNP) + 어근(XR) + 외국어(SL)
+# NNB(의존명사)·NR(수사)·NP(대명사) 제외 이유:
+#   NNB → "것", "수", "데", "뿐" 등 문법적 의존명사 — 검색 변별력 없음
+#   NR  → "하나", "둘" 등 수사 — 복지 검색 맥락에서 의미 없음
+#   NP  → "나", "우리" 등 대명사 — 불필요
+_VALID_TAGS = {"NNG", "NNP", "XR", "SL"}
+
+
+def _filter_tokens(token_list) -> list[str]:
+    """형태소 분석 결과에서 유효 토큰만 추출 (공통 필터)"""
+    return [
+        token.form
+        for token in token_list
+        if token.tag in _VALID_TAGS and len(token.form) >= 2
+    ]
 
 
 def tokenize(text: str) -> list[str]:
-    """
-    한국어 경량 토크나이저
-    - 공백 분리 후 조사/어미 제거
-    - 원형 + 조사 제거형 둘 다 인덱싱 (재현율 향상)
-    - 2글자 미만 토큰 제거 (노이즈)
-    """
-    tokens = []
-    for word in text.split():
-        if len(word) < 2:
-            continue
-        tokens.append(word)  # 원형 추가
+    """단일 텍스트 형태소 분석 — 검색 쿼리 처리용"""
+    return _filter_tokens(_kiwi.tokenize(text))
 
-        # 조사 제거 후 어근 추가
-        for josa in _JOSA:
-            if word.endswith(josa) and len(word) - len(josa) >= 2:
-                stem = word[:-len(josa)]
-                tokens.append(stem)
-                break
 
-    return tokens
+def tokenize_batch(texts: list[str]) -> list[list[str]]:
+    """다수 텍스트 배치 형태소 분석 — BM25 인덱스 생성용
+
+    Kiwi의 배치 API를 활용해 단건 반복 대비 처리 속도를 대폭 향상시킴.
+    BM25 IDF가 고빈도 단어를 자동으로 낮은 가중치로 처리하므로
+    별도 불용어 목록 없이 품사 필터만으로 충분함.
+    """
+    return [_filter_tokens(token_list) for token_list in _kiwi.tokenize(texts)]
 
 
 class HybridSearcher:
     def __init__(self, device="cuda"):
         print("하이브리드 검색기 초기화 중...")
 
-        # Chroma DB 연결
-        client = chromadb.PersistentClient(path=CHROMA_PATH)
+        # ChromaDB 로컬 클라이언트 (chroma_db/ 디렉토리 직접 사용, 별도 서버 불필요)
+        client = chromadb.PersistentClient(path=str(CHROMA_PATH))
         self.collection = client.get_collection(COLLECTION_NAME)
 
         # 정책 데이터 로드 (복지로 + 정부24)
@@ -65,17 +70,47 @@ class HybridSearcher:
 
         # chunk_id 인덱싱 → O(1) 조회
         self.df_chunks = self.df_chunks.set_index("chunk_id", drop=False)
+        self.chunk_ids = self.df_chunks["chunk_id"].tolist()
         print(f"전체 정책 로드: {len(self.df_chunks)}개")
 
         # BGE-M3 모델 로드
         print("BGE-M3 모델 로딩 중...")
         self.model = SentenceTransformer(MODEL_NAME, device=device)
 
-        # BM25 초기화 (Kiwi 형태소 분석)
-        print("BM25 인덱스 생성 중 (Kiwi 형태소 분석)...")
-        tokenized = [tokenize(text) for text in self.df_chunks["text"].tolist()]
+        # BM25 초기화 (캐시 우선 로딩)
+        import pickle, hashlib
+        _cache_path = PROJECT_ROOT / "processed" / "bm25_cache.pkl"
+        _hash_path  = PROJECT_ROOT / "processed" / "bm25_cache.hash"
+
+        # 데이터 변경 감지용 해시 (chunks 파일 수정 시각 기반)
+        _src_files = [
+            PROCESSED_PATH / "chunks.csv",
+            PROCESSED_PATH / "gov24" / "chunks.csv",
+        ]
+        _hash_val = hashlib.md5(
+            b"".join(str(p.stat().st_mtime).encode() for p in _src_files)
+        ).hexdigest()
+
+        _use_cache = (
+            _cache_path.exists() and
+            _hash_path.exists() and
+            _hash_path.read_text().strip() == _hash_val
+        )
+
+        if _use_cache:
+            print("BM25 캐시 로딩 중... (이전 토크나이징 결과 재사용)")
+            with open(_cache_path, "rb") as f:
+                tokenized = pickle.load(f)
+            print("BM25 캐시 로딩 완료!")
+        else:
+            print("BM25 인덱스 생성 중 (Kiwi 배치 형태소 분석)...")
+            tokenized = tokenize_batch(self.df_chunks["text"].tolist())
+            with open(_cache_path, "wb") as f:
+                pickle.dump(tokenized, f)
+            _hash_path.write_text(_hash_val)
+            print("BM25 캐시 저장 완료!")
+
         self.bm25 = BM25Okapi(tokenized)
-        self.chunk_ids = self.df_chunks["chunk_id"].tolist()
 
         print("초기화 완료!\n")
 
@@ -98,12 +133,12 @@ class HybridSearcher:
         }
 
     def bm25_search(self, query: str) -> dict:
-        """BM25 키워드 검색 (Kiwi 형태소 분석)"""
+        """BM25 키워드 검색 (Kiwi 형태소 분석기)"""
         tokenized_query = tokenize(query)
         scores = self.bm25.get_scores(tokenized_query)
 
         # 정규화 (0~1)
-        max_score = max(scores) + 1e-9
+        max_score = scores.max() + 1e-9
         normalized = scores / max_score
 
         return {
@@ -111,21 +146,29 @@ class HybridSearcher:
             for i, chunk_id in enumerate(self.chunk_ids)
         }
 
-    def search(self, query: str, top_k: int = 5, alpha: float = 0.6) -> list:
+    def search(self, query: str, top_k: int = 5, alpha: float = 0.6, user_region: str = "") -> list:
         """
         하이브리드 검색
         alpha=0.6 → 벡터 60% + BM25 40%
+        user_region: 사용자 지역 (예: "서울특별시") — 매칭 지역/전국 정책 우선
         """
         # 1. 벡터 검색 + BM25 검색
         vector_scores = self.vector_search(query, top_k=top_k * 2)
         bm25_scores   = self.bm25_search(query)
 
-        # 2. 점수 합산
-        all_ids = set(vector_scores.keys()) | set(bm25_scores.keys())
+        # 2. 점수 합산 (bm25_scores가 전체 문서 포함, vector_scores는 그 부분집합)
         final_scores = {
-            cid: alpha * vector_scores.get(cid, 0) + (1 - alpha) * bm25_scores.get(cid, 0)
-            for cid in all_ids
+            cid: alpha * vector_scores.get(cid, 0) + (1 - alpha) * score
+            for cid, score in bm25_scores.items()
         }
+
+        # 2-1. 지역 보정: 사용자 지역 또는 전국 정책에 +0.15 보정
+        if user_region:
+            region_short = user_region[:2]  # "서울특별시" → "서울"
+            for cid in final_scores:
+                row_region = str(self.df_chunks.loc[cid, "region"]) if cid in self.df_chunks.index else ""
+                if "전국" in row_region or region_short in row_region:
+                    final_scores[cid] += 0.15
 
         # 3. Top-K 추출
         top_ids = sorted(final_scores, key=final_scores.get, reverse=True)[:top_k]
@@ -137,7 +180,7 @@ class HybridSearcher:
             results.append({
                 "rank":          rank,
                 "chunk_id":      chunk_id,
-                "policy_id":     row["policy_id"],
+                "policy_id":     str(row["policy_id"]),
                 "policy_name":   row["policy_name"],
                 "category":      row["category"],
                 "region":        row["region"],

@@ -13,33 +13,58 @@ try:
     from .searcher import HybridSearcher
 except ImportError:
     from searcher import HybridSearcher
-from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, SystemMessage
 from FlagEmbedding import FlagReranker
 
 load_dotenv()
 
-# ── 전역 초기화 ──
-# searcher/reranker는 첫 검색 요청 시점에 로딩 (import 시 VRAM/RAM 충돌 방지)
+# ── LLM 초기화: GROQ_API_KEY 있으면 Groq, 없으면 Ollama ──
+import threading
+_GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+if _GROQ_API_KEY:
+    from langchain_groq import ChatGroq
+    llm = ChatGroq(
+        model="llama-3.1-8b-instant",
+        temperature=0.3,
+        max_tokens=512,
+    )
+    print("LLM: Groq (llama-3.1-8b-instant)")
+else:
+    from langchain_ollama import ChatOllama
+    llm = ChatOllama(
+        model="qwen3.5:4b",
+        temperature=0.3,
+        num_predict=512,
+    )
+    print("LLM: Ollama (qwen3.5:4b)")
+
+# ── searcher/reranker 지연 로딩 ──
 _searcher = None
 _reranker = None
-llm = ChatOllama(
-    model="gemma3:1b",
-    temperature=0.3,
-    num_predict=400,   # 최대 출력 토큰 제한 → 응답 30초 이내 보장
-)
+_searcher_lock = threading.Lock()
+_reranker_lock = threading.Lock()
+
+# ── CUDA 사용 가능 여부 ──
+import torch as _torch
+_USE_CUDA = _torch.cuda.is_available()
 
 def get_searcher():
     global _searcher
     if _searcher is None:
-        _searcher = HybridSearcher(device="cpu")
+        with _searcher_lock:
+            if _searcher is None:
+                _searcher = HybridSearcher(device="cpu")
     return _searcher
 
 
 def get_reranker():
     global _reranker
     if _reranker is None:
-        _reranker = FlagReranker('BAAI/bge-reranker-v2-m3', use_fp16=True, device='cuda')
+        with _reranker_lock:
+            if _reranker is None:
+                _device = "cuda" if _USE_CUDA else "cpu"
+                _reranker = FlagReranker('BAAI/bge-reranker-v2-m3', use_fp16=_USE_CUDA, device=_device)
+                print(f"Reranker: bge-reranker-v2-m3 ({_device})")
     return _reranker
 
 # ── 품질 기준 ──
@@ -192,11 +217,18 @@ def generate_answer(query: str, docs: list, lang_code: str = "ko") -> str:
     }.get(lang_code, "한국어로 답변하세요.")
 
     messages = [
-        SystemMessage(content=f"""당신은 한국 복지 정책 추천 AI입니다.
-주어진 문서를 바탕으로 사용자 질문에 답변하세요.
-- 관련 정책명을 명확히 언급하세요
-- 지원 대상, 지원 내용, 신청 방법을 간결하게 설명하세요
-- 문서에 없는 내용은 추측하지 마세요
+        SystemMessage(content=f"""당신은 한국 복지 정책 전문 AI입니다.
+사용자 질문에 직접 답한 뒤, 관련 정책을 안내하세요.
+
+답변 순서:
+1. 핵심 답변: 질문에 바로 답하세요 (예: "네, 받을 수 있습니다" / "해당 지원은 ~입니다")
+2. 관련 정책: 정책명과 지원 대상·내용을 2~3줄로 간결히
+3. 신청 방법: 신청처 한 줄
+
+규칙:
+- 첫 문장은 반드시 질문의 핵심에 직접 답할 것
+- 질문과 관련 없는 정책은 언급하지 말 것
+- 문서에 없는 내용은 절대 추측하지 말 것
 - {lang_prompt}"""),
         HumanMessage(content=f"질문: {query}\n\n참고 문서:\n{context}\n\n답변:")
     ]
@@ -255,15 +287,19 @@ def benepick_rag(
 
         # ② 하이브리드 검색 (BM25 + 벡터)
         search_start = time.time()
-        results = get_searcher().search(search_query, top_k=25, alpha=0.6)
+        results = get_searcher().search(search_query, top_k=25, alpha=0.6, user_region=user_condition.get("region", ""))
         search_time_ms = round((time.time() - search_start) * 1000)
         if not results:
             return error_response("SEARCH_FAILED", "검색 결과가 없습니다.")
         print(f"[검색] {len(results)}개 후보 검색 완료 ({search_time_ms}ms)")
 
-        # ② Reranking
-        reranked = rerank(user_query, results, top_k=5)
-        print(f"[Rerank] {len(reranked)}개로 압축")
+        # ② Reranking (메모리 부족 시 스킵)
+        try:
+            reranked = rerank(user_query, results, top_k=5)
+            print(f"[Rerank] {len(reranked)}개로 압축")
+        except Exception as e:
+            print(f"[Rerank 스킵] {e} → 상위 5개 사용")
+            reranked = results[:5]
 
         # ③ CRAG 품질 검증
         final_docs = crag_quality_check(user_query, reranked)

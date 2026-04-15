@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
-from app.db.models import AnalysisResultState, PolicyApplication, PolicyBenefit, PolicyLaw, PolicyMaster, PolicyRelatedLink, PolicyTag
+from app.db.models import AnalysisProfileState, AnalysisResultState, PolicyApplication, PolicyBenefit, PolicyCondition, PolicyLaw, PolicyMaster, PolicyRelatedLink, PolicyTag
 from app.schemas.application import ApplicationPrepData, ChecklistPatchRequest, DocumentPatchRequest
 from app.schemas.common import (
     ApplyStatus,
@@ -32,10 +32,15 @@ from app.schemas.detail import PolicyDetailData
 from app.schemas.eligibility import AnalyzeRequest, AnalyzeResponseData, ProfileSummary
 from app.schemas.portfolio import PortfolioData, PortfolioItem
 from app.schemas.search import PolicySearchData
-from app.services.analysis import AnalyzedPolicy, get_analysis_results, get_policy_documents, get_profile_tags, persist_analysis_state
+from app.services.analysis import AnalyzedPolicy, analyze_policies, get_analysis_results, get_policy_documents, get_profile_tags, persist_analysis_state
 from app.services.application import ensure_application_state, get_application_step, update_checklist_state, update_document_state
 from app.services.community import create_post, get_hot_posts, get_post, get_stats, like_post, list_posts, unlike_post
 from app.services.rag import search_rag
+
+try:
+    from app.services.ai_enricher import ai_enricher
+except Exception:  # pragma: no cover - optional AI module
+    ai_enricher = None
 
 
 router = APIRouter(prefix="/api/v1")
@@ -220,6 +225,34 @@ def build_summary_from_analyzed(item: AnalyzedPolicy, *, index: int) -> PolicySu
     )
 
 
+def search_policy_summaries(db: Session, keyword: str, size: int) -> list[PolicySummary]:
+    pattern = f"%{keyword}%"
+    masters = db.execute(
+        select(PolicyMaster)
+        .where(PolicyMaster.status_active_yn.is_(True))
+        .where(
+            or_(
+                PolicyMaster.title.ilike(pattern),
+                PolicyMaster.summary.ilike(pattern),
+                PolicyMaster.description.ilike(pattern),
+                PolicyMaster.managing_agency.ilike(pattern),
+            )
+        )
+        .order_by(PolicyMaster.policy_id.asc())
+        .limit(size)
+    ).scalars().all()
+
+    return [
+        build_summary_from_master(
+            db,
+            master,
+            index=index,
+            fallback_score=max(55, 82 - ((index - 1) * 3)),
+        )
+        for index, master in enumerate(masters, start=1)
+    ]
+
+
 def resolve_rag_references(
     db: Session,
     references: list[str],
@@ -259,6 +292,98 @@ def resolve_rag_references(
     return items, matched_analyzed, unmatched
 
 
+def build_policy_text(db: Session, policy_id: str) -> str:
+    master = db.execute(select(PolicyMaster).where(PolicyMaster.policy_id == policy_id)).scalar_one_or_none()
+    application = db.execute(select(PolicyApplication).where(PolicyApplication.policy_id == policy_id)).scalar_one_or_none()
+    condition = db.execute(select(PolicyCondition).where(PolicyCondition.policy_id == policy_id)).scalar_one_or_none()
+    benefit = db.execute(select(PolicyBenefit).where(PolicyBenefit.policy_id == policy_id)).scalar_one_or_none()
+    documents = get_policy_documents(db, policy_id)
+
+    if not master:
+        return ""
+
+    parts = [
+        f"정책명: {master.title}" if master.title else "",
+        f"정책 요약: {master.summary}" if master.summary else "",
+        f"정책 설명: {master.description}" if master.description else "",
+        f"소관 기관: {master.managing_agency}" if master.managing_agency else "",
+        f"지원 내용: {benefit.benefit_detail_text}" if benefit and benefit.benefit_detail_text else "",
+        f"지원 금액: {benefit.benefit_amount_raw_text}" if benefit and benefit.benefit_amount_raw_text else "",
+        f"신청 방법: {application.application_method_text}" if application and application.application_method_text else "",
+        f"신청 기간: {application.application_period_text}" if application and application.application_period_text else "",
+        f"심사 방법: {application.screening_method_text}" if application and application.screening_method_text else "",
+        f"추가 자격: {condition.additional_qualification_text}" if condition and condition.additional_qualification_text else "",
+        f"제한 대상: {condition.restricted_target_text}" if condition and condition.restricted_target_text else "",
+    ]
+
+    if documents:
+        parts.append("제출 서류: " + ", ".join(doc.document_name for doc in documents if doc.document_name))
+
+    return "\n".join(part for part in parts if part)
+
+
+def build_user_condition_text(db: Session) -> str:
+    profile = db.execute(select(AnalysisProfileState).where(AnalysisProfileState.id == 1)).scalar_one_or_none()
+    if not profile:
+        return ""
+
+    return (
+        f"나이 {profile.age}세, "
+        f"지역 {profile.region_name}, "
+        f"소득구간 {profile.income_band}, "
+        f"가구유형 {profile.household_type}, "
+        f"취업상태 {profile.employment_status}, "
+        f"주거상태 {profile.housing_status}"
+    )
+
+
+def enrich_detail_with_ai(
+    db: Session,
+    policy_id: str,
+    *,
+    target_lang: str = "ko",
+    fallback_summary: str | None = None,
+    fallback_reasons: list[str] | None = None,
+    fallback_actions: list[str] | None = None,
+) -> dict[str, object]:
+    fallback_reasons = fallback_reasons or []
+    fallback_actions = fallback_actions or []
+
+    if ai_enricher is None:
+        return {
+            "eligibility_summary": fallback_summary,
+            "blocking_reasons": fallback_reasons,
+            "recommended_actions": fallback_actions,
+        }
+
+    policy_text = build_policy_text(db, policy_id)
+    user_condition_text = build_user_condition_text(db)
+
+    if not policy_text:
+        return {
+            "eligibility_summary": fallback_summary,
+            "blocking_reasons": fallback_reasons,
+            "recommended_actions": fallback_actions,
+        }
+
+    try:
+        enriched = ai_enricher.enrich_detail(
+            policy_text=policy_text,
+            user_condition_text=user_condition_text,
+            target_lang=target_lang,
+            fallback_reasons=fallback_reasons,
+            fallback_actions=fallback_actions,
+        )
+    except Exception:
+        enriched = {}
+
+    return {
+        "eligibility_summary": enriched.get("eligibility_summary") or fallback_summary,
+        "blocking_reasons": enriched.get("blocking_reasons") or fallback_reasons,
+        "recommended_actions": enriched.get("recommended_actions") or fallback_actions,
+    }
+
+
 def build_rag_condition_query(request: AnalyzeRequest) -> str:
     household_label = {
         "SINGLE": "1인 가구",
@@ -283,7 +408,7 @@ def build_rag_condition_query(request: AnalyzeRequest) -> str:
     return f"{request.region_name} 거주, 만 {request.age}세, {household_label}, {employment_label}, {housing_label}, {income_label} 조건에 맞는 복지 정책"
 
 
-def build_detail_data(db: Session, policy_id: str) -> PolicyDetailData:
+def build_detail_data(db: Session, policy_id: str, *, target_lang: str = "ko") -> PolicyDetailData:
     master = db.execute(select(PolicyMaster).where(PolicyMaster.policy_id == policy_id)).scalar_one_or_none()
     if not master:
         raise HTTPException(status_code=404, detail="Policy not found")
@@ -318,6 +443,15 @@ def build_detail_data(db: Session, policy_id: str) -> PolicyDetailData:
         blocking_reasons = []
         recommended_actions = ["AI 분석 실행 후 개인 조건 기준 상세 적합도를 다시 확인해보세요."]
 
+    enriched = enrich_detail_with_ai(
+        db,
+        policy_id,
+        target_lang=target_lang,
+        fallback_summary=eligibility_summary,
+        fallback_reasons=blocking_reasons,
+        fallback_actions=recommended_actions,
+    )
+
     return PolicyDetailData(
         policy_id=master.policy_id,
         title=master.title,
@@ -325,9 +459,9 @@ def build_detail_data(db: Session, policy_id: str) -> PolicyDetailData:
         match_score=match_score,
         score_level=score_level,
         apply_status=apply_status,
-        eligibility_summary=eligibility_summary,
-        blocking_reasons=blocking_reasons,
-        recommended_actions=recommended_actions,
+        eligibility_summary=enriched["eligibility_summary"],
+        blocking_reasons=enriched["blocking_reasons"],
+        recommended_actions=enriched["recommended_actions"],
         required_documents=documents,
         related_links=load_policy_links(db, policy_id),
         laws=load_policy_laws(db, policy_id),
@@ -358,8 +492,18 @@ def analyze(request: AnalyzeRequest, db: Session = Depends(get_db)):
         rag_result.docs_used,
         rag_answer=rag_result.answer,
     )
-    persist_analysis_state(db, request, rag_analyzed)
-    policies = rag_policies[:5]
+    if rag_analyzed:
+        analyzed_items = rag_analyzed
+        policies = rag_policies[:5]
+    else:
+        analyzed_items = analyze_policies(db, request)
+        policies = [
+            build_summary_from_analyzed(item, index=index)
+            for index, item in enumerate(analyzed_items[:5], start=1)
+        ]
+        unmatched = []
+
+    persist_analysis_state(db, request, analyzed_items)
 
     analysis_score = round(sum(item.match_score for item in policies) / max(1, len(policies)))
     return SuccessResponse(
@@ -377,11 +521,15 @@ def analyze(request: AnalyzeRequest, db: Session = Depends(get_db)):
 def search_policies(
     q: str = Query(..., min_length=1),
     size: int = Query(default=20, ge=1, le=50),
+    lang: str = Query(default="ko", pattern="^(ko|en|zh|ja|vi)$"),
     db: Session = Depends(get_db),
 ):
     keyword = q.strip()
-    rag_result = search_rag(query=keyword, user_condition={}, lang_code="ko")
+    rag_result = search_rag(query=keyword, user_condition={}, lang_code=lang)
     items, _, unmatched = resolve_rag_references(db, rag_result.docs_used[:size])
+    if not items:
+        items = search_policy_summaries(db, keyword, size)
+        unmatched = []
 
     return SuccessResponse(
         data=PolicySearchData(
@@ -396,8 +544,12 @@ def search_policies(
 
 
 @router.get("/policies/{policy_id}/detail", response_model=SuccessResponse[PolicyDetailData])
-def get_policy_detail(policy_id: str, db: Session = Depends(get_db)):
-    return SuccessResponse(data=build_detail_data(db, policy_id))
+def get_policy_detail(
+    policy_id: str,
+    lang: str = Query(default="ko", pattern="^(ko|en|zh|ja|vi)$"),
+    db: Session = Depends(get_db),
+):
+    return SuccessResponse(data=build_detail_data(db, policy_id, target_lang=lang))
 
 
 @router.get("/portfolio", response_model=SuccessResponse[PortfolioData])
