@@ -30,8 +30,8 @@ import pipeline
 # 모듈 레벨 전역 객체 교체
 _mock_reranker = MagicMock()
 _mock_llm = MagicMock()
-pipeline.searcher = _mock_searcher_instance
-pipeline.reranker = _mock_reranker
+pipeline._searcher = _mock_searcher_instance
+pipeline._reranker = _mock_reranker
 pipeline.llm = _mock_llm
 
 

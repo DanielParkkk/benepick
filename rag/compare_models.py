@@ -20,6 +20,9 @@ import json
 import numpy as np
 import pandas as pd
 from datetime import datetime
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent
 from sentence_transformers import SentenceTransformer
 from FlagEmbedding import FlagReranker
 from sklearn.metrics.pairwise import cosine_similarity
@@ -86,8 +89,8 @@ TEST_QUERIES = [
 
 def load_corpus(sample_size: int) -> pd.DataFrame:
     """복지로 + 정부24 청크 로드 후 샘플링"""
-    df1 = pd.read_csv("data/processed/chunks.csv")
-    df2 = pd.read_csv("data/processed/gov24/chunks.csv")
+    df1 = pd.read_csv(PROJECT_ROOT / "data" / "processed" / "chunks.csv")
+    df2 = pd.read_csv(PROJECT_ROOT / "data" / "processed" / "gov24" / "chunks.csv")
     df  = pd.concat([df1, df2], ignore_index=True)
     return df.sample(n=sample_size, random_state=RANDOM_SEED).reset_index(drop=True)
 

@@ -24,7 +24,7 @@ load_dotenv()
 _searcher = None
 _reranker = None
 llm = ChatOllama(
-    model="gemma3:1b",
+    model="qwen3.5:4b",
     temperature=0.3,
     num_predict=400,   # 최대 출력 토큰 제한 → 응답 30초 이내 보장
 )
@@ -45,6 +45,21 @@ def get_reranker():
 # ── 품질 기준 ──
 QUALITY_HIGH   = 0.7
 QUALITY_MEDIUM = 0.4
+
+# ── 복잡한 질문 판단 ──
+_WELFARE_KEYWORDS = [
+    '청년', '소득', '주거', '지원', '신청', '복지', '생계', '의료',
+    '출산', '장애', '노인', '수급', '가구', '월세', '전세', '취업',
+    '훈련', '연금', '급여', '장학', '보육', '육아', '다문화', '기초',
+    '차상위', '긴급', '실업', '고용',
+]
+
+def is_complex(query: str) -> bool:
+    """복잡한 질문 판단: 길이 > 15 AND 복지 키워드 2개 이상"""
+    if len(query) <= 15:
+        return False
+    keyword_count = sum(1 for kw in _WELFARE_KEYWORDS if kw in query)
+    return keyword_count >= 2
 
 
 # ── 응답 형식 헬퍼 ──
@@ -297,65 +312,4 @@ def benepick_rag(
         return error_response("SEARCH_FAILED", str(e))
 
 
-# ── 테스트 ──
-if __name__ == "__main__":
-    import pandas as pd
-
-    test_queries = [
-        ("서울 청년 월세 지원 받을 수 있어요?", "ko"),
-        ("취업 준비생 훈련비 지원", "ko"),
-        ("노인 돌봄 서비스", "ko"),
-        ("청년 창업 지원금 받을 수 있나요?", "ko"),
-        ("대학생 장학금 신청 방법", "ko"),
-        ("장애인 취업 지원 프로그램", "ko"),
-        ("장애인 의료비 지원", "ko"),
-        ("출산 지원금 얼마나 받을 수 있어요?", "ko"),
-        ("어린이집 보육료 지원", "ko"),
-        ("기초생활수급자 혜택 뭐가 있어요?", "ko"),
-        ("다문화 가정 한국어 교육 지원", "ko"),
-        ("disability support benefits", "en"),
-    ]
-
-    alpha_values = [0.3, 0.5, 0.6, 0.7, 0.9]  # 0.6은 현재 기준값
-    results_data = []
-
-    for alpha in alpha_values:
-        print(f"\n{'='*60}")
-        print(f"[alpha = {alpha}] 실험")
-        print(f"{'='*60}")
-
-        alpha_qualities = []
-
-        for query, lang in test_queries:
-            # alpha 값 적용해서 검색
-            results = get_searcher().search(query, top_k=25, alpha=alpha)
-            reranked = rerank(query, results, top_k=5)
-            final_docs = crag_quality_check(query, reranked)
-
-            scores = get_reranker().compute_score(
-                [[query, d["evidence_text"]] for d in final_docs],
-                normalize=True
-            )
-            quality = round(sum(scores) / len(scores), 3)
-            alpha_qualities.append(quality)
-
-            print(f"질문: {query[:20]}... | 품질: {quality:.3f}")
-
-            results_data.append({
-                "alpha":   alpha,
-                "질문":    query,
-                "품질 점수": quality,
-                "사용된 정책": ", ".join([d["policy_name"] for d in final_docs]),
-            })
-
-        avg = round(sum(alpha_qualities) / len(alpha_qualities), 3)
-        print(f"\n▶ alpha={alpha} 평균 품질: {avg:.3f}")
-
-    df = pd.DataFrame(results_data)
-    df.to_excel("실험결과_alpha비교.xlsx", index=False)
-    print("\n\n엑셀 저장 완료! -> 실험결과_alpha비교.xlsx")
-
-    # alpha별 평균 요약
-    summary = df.groupby("alpha")["품질 점수"].mean().round(3)
-    print("\nalpha별 평균 품질 점수")
-    print(summary)
+# alpha 비교 실험은 compare_alpha.py 참고
