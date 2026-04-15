@@ -210,12 +210,22 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# Large data files
+# === Project-specific (RAG / Frontend / Build) ===
+
+# Claude 관련 (로컬 설정)
+.claude/
+
+# ChromaDB / 벡터 DB
 chroma.sqlite3
-*.npy
-processed/
-raw/
-1b995379-75b1-4dff-a649-c765cd22ca67/
-238e8b1c-726a-4220-8791-ccd1b934f23c/
-38c90568-e260-4ef0-b4b3-475b98d2a46f/
-5627e75c-ab2f-4093-aa59-b49840d5c969/
+rag/chroma_db/
+
+# 벡터 인덱스 파일들
+*.bin
+*.pickle
+
+# 프론트 빌드 캐시
+frontend/tsconfig.tsbuildinfo
+
+# 결과 파일 / 실험 로그
+rag/interim_results_*.json
+rag/*.xlsx
