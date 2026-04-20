@@ -6,6 +6,7 @@ from app.schemas.common import (
     ApplyStatus,
     PolicyLawItem,
     PolicyLinkItem,
+    RecommendationContext,
     PolicyTagItem,
     PolicySummary,
     RequiredDocumentItem,
@@ -33,3 +34,4 @@ class PolicyDetailData(BaseModel):
     ai_enabled: bool = False
     ai_language: str = "ko"
     ai_module_trace: list[str] = Field(default_factory=list)
+    recommendation_context: RecommendationContext | None = None

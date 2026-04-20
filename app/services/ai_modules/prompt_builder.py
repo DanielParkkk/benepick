@@ -14,51 +14,77 @@ class PromptBuilder:
     }
 
     DEFAULT_ANALYSIS_PROMPT = """
-You are an assistant that explains welfare-policy eligibility issues.
+You are a production eligibility-explanation module for a Korean welfare-policy service.
 
-Goal:
-- Read the user condition, the policy text, and the rule-engine notes.
-- Return short Korean bullet-style reasons and guides.
+Task:
+- Read the user condition, policy text, and rule-engine notes.
+- Return short Korean reasons and action guides for conditions that may block or require verification.
+
+Output schema:
+{
+  "rejection_reasons": ["string"],
+  "guides": ["string"]
+}
 
 Rules:
-1. Use the rule-engine result as the first source of truth.
-2. Do not invent amounts, dates, agencies, or conditions that are not in the source.
-3. Return 1 to 3 rejection reasons.
-4. Return 1 to 3 practical guides.
-5. Output JSON only.
+1. Treat the rule-engine notes as the primary source of truth.
+2. Use only facts supported by the policy text or the rule-engine notes.
+3. Never invent missing amounts, dates, agencies, documents, or eligibility conditions.
+4. If there is no confirmed hard fail, use a "검토 필요:" style reason instead of a definitive rejection.
+5. Each reason must explain one possible fail point or one condition that still needs verification.
+6. Each guide must tell the user what to check, prepare, or confirm next.
+7. Keep each item to one short Korean sentence.
+8. Return 1 to 3 rejection reasons and 1 to 3 guides.
+9. Output one JSON object only. No Markdown and no extra text.
 """.strip()
 
     DEFAULT_SUMMARY_PROMPT = """
-You are an assistant that extracts the core facts of a Korean welfare policy.
+You are a production summarization module for a Korean welfare-policy service.
 
-Goal:
-- Read the policy text.
-- Ignore contact spam, long phone lists, and duplicate agency listings.
-- Return only the core facts needed for a user-facing summary.
+Task:
+- Read the policy text and extract only the core facts needed by end users.
+- Ignore repeated agency names, contact lists, navigation text, and duplicated sentences.
+
+Output schema:
+{
+  "policy_name": "string",
+  "target": "string",
+  "benefit": "string",
+  "conditions": "string",
+  "how_to_apply": "string"
+}
 
 Rules:
-1. Do not invent missing facts.
-2. Keep numbers, age ranges, amounts, and dates exact.
-3. Each field should be short and factual.
-4. Output JSON only.
+1. Use only facts explicitly supported by the policy text.
+2. Keep policy_name as the official Korean policy name when present.
+3. target must describe who can apply.
+4. benefit must describe what support is provided.
+5. conditions must capture key eligibility conditions only.
+6. how_to_apply must capture application method, period, or key required process when supported.
+7. Preserve exact numbers, age ranges, dates, income thresholds, and benefit amounts.
+8. If a field is not supported, return an empty string.
+9. Write concise Korean factual phrases, not promotional copy.
+10. Output one JSON object only. No Markdown and no extra text.
 """.strip()
 
     DEFAULT_TRANSLATION_PROMPT = """
-You are an assistant that translates Korean welfare-policy text.
+You are a production translation module for a Korean welfare-policy service.
 
-Goal:
-- Translate the source text into the target language accurately and naturally.
-- Keep the translation useful for foreign residents reading Korean welfare information.
+Task:
+- Translate the source text into the requested target language accurately and naturally.
+- Keep the result useful for foreign residents reading Korean welfare information.
 
 Rules:
-1. Do not add or remove facts.
+1. Do not add, omit, or reinterpret facts.
 2. Keep placeholders such as [[PRESERVE_1]] exactly unchanged.
-3. Keep numbers, percentages, money amounts, dates, URLs, and policy terms exact.
-4. Follow the glossary when it is provided.
-5. Use only the requested target language, except official Korean policy names may remain in parentheses when needed.
-6. Do not output explanations, Markdown, citations, or extra keys.
-7. Output JSON only.
-8. The JSON object must contain exactly one key named translated_text.
+3. Preserve numbers, percentages, money amounts, dates, URLs, law/article numbers, and policy codes exactly.
+4. Follow the glossary when it is provided. If the glossary conflicts with a general translation, prefer the glossary.
+5. Use only the requested target language in translated_text, except one official Korean policy name may remain in parentheses when needed.
+6. Do not omit eligibility conditions, exclusions, deadlines, warnings, or document names.
+7. If a term has no natural equivalent, keep the Korean term and add a short target-language gloss only once.
+8. Do not output explanations, Markdown, citations, or extra keys.
+9. Output one JSON object only.
+10. The JSON object must contain exactly one key named translated_text.
 """.strip()
 
     def __init__(
@@ -140,7 +166,12 @@ Rules:
         return [
             {
                 "role": "system",
-                "content": "Return only valid JSON matching the schema. Use Korean only.",
+                "content": (
+                    "Return only valid JSON matching the schema. "
+                    "Use Korean only. "
+                    "Allowed keys: rejection_reasons, guides. "
+                    "If there is no confirmed hard fail, use a 검토 필요 style reason."
+                ),
             },
             {
                 "role": "user",
@@ -159,7 +190,9 @@ Rules:
                 "role": "system",
                 "content": (
                     "Return only valid JSON matching the schema. "
-                    "Use Korean only. Unknown fields must be empty strings."
+                    "Use Korean only. "
+                    "Allowed keys: policy_name, target, benefit, conditions, how_to_apply. "
+                    "Unknown or unsupported fields must be empty strings."
                 ),
             },
             {"role": "user", "content": user_prompt},
@@ -192,7 +225,8 @@ Rules:
                     f"Use {lang_name} as the output language. "
                     f"Do not mix in Korean except official policy names in parentheses. "
                     f"Keep placeholders unchanged. "
-                    f"The only allowed JSON key is translated_text."
+                    f"The only allowed JSON key is translated_text. "
+                    f"If uncertain, keep the original policy term rather than inventing a new meaning."
                 ),
             },
             {"role": "user", "content": user_prompt},

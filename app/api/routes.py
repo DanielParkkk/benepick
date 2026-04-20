@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -33,14 +35,15 @@ from app.schemas.eligibility import AnalyzeRequest, AnalyzeResponseData, Profile
 from app.schemas.portfolio import PortfolioData, PortfolioItem
 from app.schemas.search import PolicySearchData
 from app.services.analysis import AnalyzedPolicy, analyze_policies, get_analysis_results, get_policy_documents, get_profile_tags, persist_analysis_state
+from app.services.personalization import evaluate_policy
 from app.services.application import ensure_application_state, get_application_step, update_checklist_state, update_document_state
 from app.services.community import create_post, get_hot_posts, get_post, get_stats, like_post, list_posts, unlike_post
 from app.services.rag import search_rag
 
 try:
-    from app.services.ai_enricher import ai_enricher
+    from app.services.detail_enrichment_service import detail_enrichment_service
 except Exception:  # pragma: no cover - optional AI module
-    ai_enricher = None
+    detail_enrichment_service = None
 
 
 router = APIRouter(prefix="/api/v1")
@@ -87,6 +90,7 @@ def build_policy_summary(
     benefit_amount_label: str | None,
     benefit_summary: str | None,
     badge_items: list[str],
+    recommendation_context: dict[str, object] | None,
     sort_order: int,
 ) -> PolicySummary:
     if match_score >= 85:
@@ -107,6 +111,7 @@ def build_policy_summary(
         benefit_amount_label=benefit_amount_label,
         benefit_summary=benefit_summary,
         badge_items=badge_items,
+        recommendation_context=recommendation_context,
         sort_order=sort_order,
     )
 
@@ -157,6 +162,7 @@ def build_summary_from_master(
         benefit_amount_label=analysis_result.benefit_amount_label if analysis_result else None,
         benefit_summary=(analysis_result.benefit_summary if analysis_result else (benefit.benefit_period_label if benefit else None)),
         badge_items=badge_items[:3],
+        recommendation_context=None,
         sort_order=index,
     )
 
@@ -207,6 +213,7 @@ def build_analyzed_from_master(
         benefit_amount_label=(f"최대 {benefit.benefit_amount_value // 10000:,}만원" if benefit and benefit.benefit_amount_value and benefit.benefit_amount_value >= 10000 else (f"최대 {benefit.benefit_amount_value:,}원" if benefit and benefit.benefit_amount_value else None)),
         benefit_summary=benefit.benefit_period_label if benefit else None,
         badge_items=badge_items[:3],
+        recommendation_context=None,
     )
 
 
@@ -221,6 +228,7 @@ def build_summary_from_analyzed(item: AnalyzedPolicy, *, index: int) -> PolicySu
         benefit_amount_label=item.benefit_amount_label,
         benefit_summary=item.benefit_summary,
         badge_items=item.badge_items,
+        recommendation_context=item.recommendation_context,
         sort_order=index,
     )
 
@@ -349,7 +357,7 @@ def enrich_detail_with_ai(
     fallback_reasons = fallback_reasons or []
     fallback_actions = fallback_actions or []
 
-    if ai_enricher is None:
+    if detail_enrichment_service is None:
         return {
             "eligibility_summary": fallback_summary,
             "blocking_reasons": fallback_reasons,
@@ -367,10 +375,11 @@ def enrich_detail_with_ai(
         }
 
     try:
-        enriched = ai_enricher.enrich_detail(
+        enriched = detail_enrichment_service.enrich_detail(
             policy_text=policy_text,
             user_condition_text=user_condition_text,
             target_lang=target_lang,
+            fallback_summary=fallback_summary,
             fallback_reasons=fallback_reasons,
             fallback_actions=fallback_actions,
         )
@@ -382,6 +391,104 @@ def enrich_detail_with_ai(
         "blocking_reasons": enriched.get("blocking_reasons") or fallback_reasons,
         "recommended_actions": enriched.get("recommended_actions") or fallback_actions,
     }
+
+
+def build_ai_module_trace(target_lang: str) -> list[str]:
+    trace = [
+        "summary_service.py · 정책 요약",
+        "qwen_reasoner.py · 탈락 사유 / 보완 가이드",
+    ]
+    if target_lang != "ko":
+        trace.append(f"translation_service.py · {target_lang} 번역")
+    trace.append("output_guard.py · 근거 범위 / 언어 검증")
+    return trace
+
+
+def _recommendation_tier_from_score(score: int) -> str:
+    if score >= 90:
+        return "\uac15\ub825 \ucd94\ucc9c"
+    if score >= 75:
+        return "\ucd94\ucc9c"
+    if score >= 60:
+        return "\uc870\uac74 \ud655\uc778 \ud6c4 \ucd94\ucc9c"
+    if score >= 40:
+        return "\ucc38\uace0\uc6a9"
+    return "\uc6b0\uc120\uc21c\uc704 \ub0ae\uc74c"
+
+
+def _score_level_from_int(score: int) -> ScoreLevel:
+    if score >= 85:
+        return ScoreLevel.HIGH
+    if score >= 65:
+        return ScoreLevel.MID
+    return ScoreLevel.LOW
+
+
+def _apply_search_rerank(item: AnalyzedPolicy, rank_index: int) -> AnalyzedPolicy:
+    search_rank_score = max(45, 100 - ((rank_index - 1) * 4))
+    final_score = int(round((item.match_score * 0.7) + (search_rank_score * 0.3)))
+    context = dict(item.recommendation_context or {})
+    breakdown = dict(context.get("score_breakdown") or {})
+    breakdown["search_rank_score"] = search_rank_score
+    breakdown["final_score"] = final_score
+    context["score_breakdown"] = breakdown
+    context["recommendation_tier"] = _recommendation_tier_from_score(final_score)
+    return replace(
+        item,
+        match_score=final_score,
+        score_level=_score_level_from_int(final_score),
+        recommendation_context=context,
+    )
+
+
+def select_display_items(all_analyzed: list[AnalyzedPolicy], rag_policies: list[PolicySummary], *, limit: int = 5) -> list[AnalyzedPolicy]:
+    analyzed_map = {item.policy_id: item for item in all_analyzed}
+    reranked_pool: list[AnalyzedPolicy] = []
+    seen_policy_ids: set[str] = set()
+
+    for rank_index, policy in enumerate(rag_policies[:20], start=1):
+        item = analyzed_map.get(policy.policy_id)
+        if (
+            item is None
+            or item.policy_id in seen_policy_ids
+            or item.apply_status == ApplyStatus.NOT_RECOMMENDED
+            or item.match_score < 60
+        ):
+            continue
+        reranked_pool.append(_apply_search_rerank(item, rank_index))
+        seen_policy_ids.add(item.policy_id)
+
+    reranked_pool.sort(
+        key=lambda item: (
+            item.apply_status != ApplyStatus.APPLICABLE_NOW,
+            item.apply_status == ApplyStatus.NOT_RECOMMENDED,
+            -item.match_score,
+            item.title,
+        )
+    )
+    selected = reranked_pool[:limit]
+    if len(selected) >= limit:
+        return selected
+
+    for item in all_analyzed:
+        if item.policy_id in seen_policy_ids:
+            continue
+        selected.append(item)
+        seen_policy_ids.add(item.policy_id)
+        if len(selected) >= limit:
+            break
+    return selected
+def expand_analysis_state(display_items: list[AnalyzedPolicy], all_analyzed: list[AnalyzedPolicy], *, limit: int = 20) -> list[AnalyzedPolicy]:
+    selected = list(display_items)
+    seen_policy_ids = {item.policy_id for item in selected}
+    for item in all_analyzed:
+        if item.policy_id in seen_policy_ids:
+            continue
+        selected.append(item)
+        seen_policy_ids.add(item.policy_id)
+        if len(selected) >= limit:
+            break
+    return selected
 
 
 def build_rag_condition_query(request: AnalyzeRequest) -> str:
@@ -408,13 +515,46 @@ def build_rag_condition_query(request: AnalyzeRequest) -> str:
     return f"{request.region_name} 거주, 만 {request.age}세, {household_label}, {employment_label}, {housing_label}, {income_label} 조건에 맞는 복지 정책"
 
 
+def build_request_from_profile_state(db: Session) -> AnalyzeRequest | None:
+    profile = db.execute(select(AnalysisProfileState).where(AnalysisProfileState.id == 1)).scalar_one_or_none()
+    if not profile:
+        return None
+    try:
+        return AnalyzeRequest(
+            age=profile.age,
+            region_code=profile.region_code,
+            region_name=profile.region_name,
+            income_band=profile.income_band,
+            household_type=profile.household_type,
+            employment_status=profile.employment_status,
+            housing_status=profile.housing_status,
+        )
+    except Exception:
+        return None
+
+
 def build_detail_data(db: Session, policy_id: str, *, target_lang: str = "ko") -> PolicyDetailData:
     master = db.execute(select(PolicyMaster).where(PolicyMaster.policy_id == policy_id)).scalar_one_or_none()
     if not master:
         raise HTTPException(status_code=404, detail="Policy not found")
 
     application = db.execute(select(PolicyApplication).where(PolicyApplication.policy_id == policy_id)).scalar_one_or_none()
+    benefit = db.execute(select(PolicyBenefit).where(PolicyBenefit.policy_id == policy_id)).scalar_one_or_none()
+    condition = db.execute(select(PolicyCondition).where(PolicyCondition.policy_id == policy_id)).scalar_one_or_none()
     result = db.execute(select(AnalysisResultState).where(AnalysisResultState.policy_id == policy_id)).scalar_one_or_none()
+
+    profile_request = build_request_from_profile_state(db)
+    personalized = None
+    recommendation_context = None
+    if profile_request is not None:
+        personalized = evaluate_policy(
+            req=profile_request,
+            master=master,
+            condition=condition,
+            benefit=benefit,
+            application=application,
+        )
+        recommendation_context = dict(personalized.recommendation_context or {})
 
     documents = [
         RequiredDocumentItem(
@@ -434,14 +574,28 @@ def build_detail_data(db: Session, policy_id: str, *, target_lang: str = "ko") -
         eligibility_summary = result.eligibility_summary
         blocking_reasons = result.blocking_reasons_json or []
         recommended_actions = result.recommended_actions_json or []
+    elif personalized is not None:
+        description = master.summary or master.description
+        match_score = personalized.match_score
+        score_level = personalized.score_level
+        apply_status = personalized.apply_status
+        eligibility_summary = personalized.eligibility_summary
+        blocking_reasons = personalized.blocking_reasons
+        recommended_actions = personalized.recommended_actions
     else:
         description = master.summary or master.description
         match_score = 60
         score_level = ScoreLevel.MID
         apply_status = ApplyStatus.NEEDS_CHECK
-        eligibility_summary = "분석 결과가 아직 없어 정책 기본 정보 기준으로 보여주고 있습니다."
+        eligibility_summary = "정책 기본 정보를 기준으로 상세 내용을 확인하는 단계입니다."
         blocking_reasons = []
-        recommended_actions = ["AI 분석 실행 후 개인 조건 기준 상세 적합도를 다시 확인해보세요."]
+        recommended_actions = ["\uc815\ucc45 \uc6d0\ubb38\uacfc \uc2e0\uccad \uc870\uac74\uc744 \uba3c\uc800 \ud655\uc778\ud558\uc138\uc694."]
+
+    if recommendation_context is not None:
+        breakdown = dict(recommendation_context.get("score_breakdown") or {})
+        breakdown["final_score"] = match_score
+        recommendation_context["score_breakdown"] = breakdown
+        recommendation_context["recommendation_tier"] = _recommendation_tier_from_score(match_score)
 
     enriched = enrich_detail_with_ai(
         db,
@@ -469,11 +623,16 @@ def build_detail_data(db: Session, policy_id: str, *, target_lang: str = "ko") -
         application_url=application.application_url if application else master.application_url,
         managing_agency=master.managing_agency,
         last_updated_at=master.updated_at,
+        ai_enabled=bool(detail_enrichment_service and getattr(detail_enrichment_service, "enabled", False)),
+        ai_language=target_lang,
+        ai_module_trace=build_ai_module_trace(target_lang),
+        recommendation_context=recommendation_context,
     )
 
 
 @router.post("/eligibility/analyze", response_model=SuccessResponse[AnalyzeResponseData])
 def analyze(request: AnalyzeRequest, db: Session = Depends(get_db)):
+    all_analyzed = analyze_policies(db, request)
     rag_result = search_rag(
         query=build_rag_condition_query(request),
         user_condition={
@@ -487,21 +646,22 @@ def analyze(request: AnalyzeRequest, db: Session = Depends(get_db)):
         lang_code="ko",
     )
 
-    rag_policies, rag_analyzed, unmatched = resolve_rag_references(
+    rag_policies, _, unmatched = resolve_rag_references(
         db,
         rag_result.docs_used,
         rag_answer=rag_result.answer,
     )
-    if rag_analyzed:
-        analyzed_items = rag_analyzed
-        policies = rag_policies[:5]
+    if rag_policies:
+        display_items = select_display_items(all_analyzed, rag_policies, limit=5)
     else:
-        analyzed_items = analyze_policies(db, request)
-        policies = [
-            build_summary_from_analyzed(item, index=index)
-            for index, item in enumerate(analyzed_items[:5], start=1)
-        ]
+        display_items = all_analyzed[:5]
         unmatched = []
+
+    analyzed_items = expand_analysis_state(display_items, all_analyzed, limit=20)
+    policies = [
+        build_summary_from_analyzed(item, index=index)
+        for index, item in enumerate(display_items, start=1)
+    ]
 
     persist_analysis_state(db, request, analyzed_items)
 
