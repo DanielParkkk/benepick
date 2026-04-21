@@ -218,13 +218,14 @@ __marimo__/
 .claude/
 
 # ChromaDB / 벡터 DB
-chroma_db/
-chroma.sqlite3
+# chroma_db/는 배포 컨테이너에서도 필요하므로 git에 포함
 rag/chroma_db/
 
 # 벡터 인덱스 파일들
 *.bin
 *.pickle
+!chroma_db/**/*.bin
+!chroma_db/**/*.pickle
 processed/bm25_cache.*
 
 # 프론트 빌드 캐시
