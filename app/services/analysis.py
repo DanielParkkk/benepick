@@ -150,12 +150,12 @@ def _policy_text_blob(
         master.description or "",
         master.category_large or "",
         master.category_medium or "",
-        condition.additional_qualification_text if condition else "",
-        condition.restricted_target_text if condition else "",
-        benefit.benefit_detail_text if benefit else "",
-        benefit.benefit_amount_raw_text if benefit else "",
-        application.application_method_text if application else "",
-        application.application_period_text if application else "",
+        (condition.additional_qualification_text if condition else "") or "",
+        (condition.restricted_target_text if condition else "") or "",
+        (benefit.benefit_detail_text if benefit else "") or "",
+        (benefit.benefit_amount_raw_text if benefit else "") or "",
+        (application.application_method_text if application else "") or "",
+        (application.application_period_text if application else "") or "",
     ]
     return " ".join(parts).lower()
 
