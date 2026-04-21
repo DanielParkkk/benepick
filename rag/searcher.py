@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import chromadb
 import os
+import shutil
 from pathlib import Path
 from rank_bm25 import BM25Okapi
 from kiwipiepy import Kiwi
@@ -14,13 +15,57 @@ os.environ.setdefault("SENTENCE_TRANSFORMERS_HOME", str(CACHE_ROOT / "sentence-t
 
 from sentence_transformers import SentenceTransformer
 
-CHROMA_PATH = PROJECT_ROOT / "chroma_db"
+
+def _is_onedrive_path(path: Path) -> bool:
+    normalized = str(path).lower()
+    onedrive_root = os.environ.get("OneDrive") or os.environ.get("OneDriveCommercial") or ""
+    if onedrive_root and normalized.startswith(str(Path(onedrive_root)).lower()):
+        return True
+    return "onedrive" in normalized
+
+
+def _resolve_chroma_path() -> Path:
+    configured = os.environ.get("BENEPICK_CHROMA_PATH")
+    if configured:
+        return Path(configured)
+
+    project_path = PROJECT_ROOT / "chroma_db"
+    if project_path.exists() and not _is_onedrive_path(project_path):
+        return project_path
+
+    return Path(os.environ.get("LOCALAPPDATA", str(PROJECT_ROOT))) / "BenePick" / "chroma_db"
+
+
+CHROMA_PATH = _resolve_chroma_path()
 COLLECTION_NAME = "benepick_policies"
 MODEL_NAME = "BAAI/bge-m3"
+CHROMA_HOST = os.environ.get("CHROMA_HOST", "localhost")
+CHROMA_PORT = int(os.environ.get("CHROMA_PORT", "8001"))
 
 # KIWI_MODEL_PATH: 한글 경로에서 C 확장이 모델을 못 여는 문제 우회 (Windows 로컬 전용)
 # Railway/Linux 등 배포 환경에서는 환경변수 미설정 → kiwipiepy 기본 경로 자동 사용
-_kiwi_model_path = os.environ.get("KIWI_MODEL_PATH") or None
+def _ensure_ascii_kiwi_model_path() -> str | None:
+    configured = os.environ.get("KIWI_MODEL_PATH")
+    if configured:
+        return configured
+
+    # 기본 설치 경로가 비-ASCII(예: 한글 경로)일 경우를 대비해
+    # 사용자 홈(ASCII) 아래로 모델 파일을 1회 복사해 사용한다.
+    src_dir = Path(__file__).resolve().parents[1] / "venv" / "Lib" / "site-packages" / "kiwipiepy_model"
+    if not src_dir.exists():
+        return None
+
+    home = Path(os.environ.get("USERPROFILE", "C:/Users/Public"))
+    ascii_dir = home / "kiwi_model"
+    try:
+        if not ascii_dir.exists():
+            shutil.copytree(src_dir, ascii_dir)
+        return str(ascii_dir)
+    except Exception:
+        return None
+
+
+_kiwi_model_path = _ensure_ascii_kiwi_model_path()
 _kiwi = Kiwi(model_path=_kiwi_model_path, num_workers=-1)
 
 # BM25 대상 품사: 일반명사(NNG) + 고유명사(NNP) + 어근(XR) + 외국어(SL)
@@ -59,8 +104,16 @@ class HybridSearcher:
     def __init__(self, device="cuda"):
         print("하이브리드 검색기 초기화 중...")
 
-        # ChromaDB 로컬 클라이언트 (chroma_db/ 디렉토리 직접 사용, 별도 서버 불필요)
-        client = chromadb.PersistentClient(path=str(CHROMA_PATH))
+        # ChromaDB 연결 우선순위:
+        # 1) HTTP 서버(localhost:8001) 2) 로컬 PersistentClient
+        # 서버 기반 인덱스가 있는 경우 HNSW 로드 안정성이 더 높다.
+        try:
+            client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
+            client.heartbeat()
+            print(f"Chroma 연결: HTTP ({CHROMA_HOST}:{CHROMA_PORT})")
+        except Exception:
+            client = chromadb.PersistentClient(path=str(CHROMA_PATH))
+            print(f"Chroma 연결: Persistent ({CHROMA_PATH})")
         self.collection = client.get_collection(COLLECTION_NAME)
 
         # 정책 데이터 로드 (복지로 + 정부24)

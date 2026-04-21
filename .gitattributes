@@ -1,0 +1,13 @@
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.csv text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.ipynb text eol=lf
+*.ps1 text eol=crlf
+
+*.npy binary
+*.bin binary
+*.pickle binary
+*.sqlite3 binary
