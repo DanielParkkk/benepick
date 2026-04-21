@@ -5,11 +5,14 @@ import os
 import re
 import urllib.error
 import urllib.request
-from pathlib import Path
 from typing import Dict, List, Optional
 
 import pandas as pd
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:  # pragma: no cover - optional local convenience
+    def load_dotenv(*args, **kwargs) -> bool:
+        return False
 
 from .policy_heuristics import (
     count_preserve_tokens,
@@ -33,7 +36,7 @@ class PolicyTranslationService:
         "ko": "Korean",
         "en": "English",
         "vi": "Vietnamese",
-        "zh": "Simplified Chinese",
+        "zh": "Chinese",
         "ja": "Japanese",
     }
     MANWON_RE = re.compile(r"(?P<num>\d[\d,]*(?:\.\d+)?)\s*\uB9CC\uC6D0")
@@ -49,23 +52,19 @@ class PolicyTranslationService:
     ) -> None:
         load_dotenv()
 
-        self.model_name = model_name or os.getenv("QWEN_MODEL", "qwen3.5:4b")
+        self.model_name = (
+            model_name
+            or os.getenv("QWEN_TRANSLATION_MODEL")
+            or os.getenv("QWEN_MODEL")
+            or "benepick-qwen35-translation:latest"
+        )
         self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
         self.timeout = float(timeout or os.getenv("OLLAMA_TIMEOUT", "300"))
         self.prompt_path = prompt_path or os.getenv("TRANSLATION_PROMPT_PATH", "prompts/prompt_translation.txt")
-        self.local_adapter_path = str(os.getenv("LOCAL_TRANSLATION_ADAPTER_PATH", "") or "").strip()
-        self.local_base_model = str(
-            os.getenv("LOCAL_TRANSLATION_BASE_MODEL", "unsloth/Qwen3.5-4B") or "unsloth/Qwen3.5-4B"
-        ).strip()
-        self._local_lora_model = None
-        self._local_lora_load_error: Exception | None = None
-        self._disabled_candidate_models: set[str] = set()
 
         self.glossary_df = self._load_glossary(csv_path)
         self.prompt_builder = self._build_prompt_builder()
         print(f"Translation model ready: {self.model_name}")
-        if self.local_adapter_path:
-            print(f"Local LoRA translation adapter configured: {self.local_adapter_path}")
 
     def _build_prompt_builder(self) -> PromptBuilder:
         prompt_dir = os.path.dirname(self.prompt_path) or "prompts"
@@ -94,44 +93,6 @@ class PolicyTranslationService:
         compact = re.sub(r"\s+", " ", compact)
         return compact
 
-    @staticmethod
-    def _strip_code_fence(text: str) -> str:
-        cleaned = str(text or "").strip()
-        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
-        cleaned = re.sub(r"\s*```$", "", cleaned)
-        return cleaned.strip()
-
-    @staticmethod
-    def _base_model_available_locally(base_model: str) -> bool:
-        normalized = str(base_model or "").strip()
-        if not normalized:
-            return False
-
-        local_path = Path(normalized)
-        if local_path.exists():
-            return True
-
-        if "/" not in normalized:
-            return False
-
-        cache_dir = Path.home() / ".cache" / "huggingface" / "hub" / f"models--{normalized.replace('/', '--')}"
-        snapshots_dir = cache_dir / "snapshots"
-        return snapshots_dir.exists() and any(snapshots_dir.iterdir())
-
-    @staticmethod
-    def _ollama_model_exists(model_name: str) -> bool:
-        normalized = str(model_name or "").strip()
-        if not normalized:
-            return False
-
-        if ":" in normalized:
-            repo_name, tag = normalized.rsplit(":", 1)
-        else:
-            repo_name, tag = normalized, "latest"
-
-        manifest_root = Path.home() / ".ollama" / "models" / "manifests" / "registry.ollama.ai" / "library"
-        return manifest_root.joinpath(*repo_name.split("/"), tag).exists()
-
     def _extract_relevant_glossary(self, text: str, policy_text: str, target_lang: str) -> str:
         if target_lang == "ko":
             return ""
@@ -151,41 +112,6 @@ class PolicyTranslationService:
         matches.sort(key=lambda item: len(item[0]), reverse=True)
         limited = matches[:12]
         return "\n".join(f"- {term} -> {translated}" for term, translated in limited)
-
-    def _local_lora_enabled(self) -> bool:
-        return bool(self.local_adapter_path)
-
-    def _get_local_lora_model(self):
-        if not self._local_lora_enabled():
-            return None
-
-        if self._local_lora_model is not None:
-            return self._local_lora_model
-
-        if self._local_lora_load_error is not None:
-            raise RuntimeError(f"Previous local LoRA load failed: {self._local_lora_load_error}")
-
-        adapter_path = Path(self.local_adapter_path)
-        if not adapter_path.exists():
-            raise FileNotFoundError(f"Local translation adapter not found: {adapter_path}")
-
-        try:
-            from .local_lora_translation import LocalLoraTranslationModel
-
-            self._local_lora_model = LocalLoraTranslationModel(
-                adapter_path=str(adapter_path),
-                base_model=self.local_base_model,
-            )
-            return self._local_lora_model
-        except Exception as exc:
-            self._local_lora_load_error = exc
-            raise RuntimeError(f"Failed to load local translation LoRA: {exc}") from exc
-
-    def _call_local_lora_json(self, messages: List[Dict[str, str]]) -> Dict:
-        model = self._get_local_lora_model()
-        if model is None:
-            raise RuntimeError("Local LoRA translation is not configured.")
-        return model.translate(messages)
 
     def _post_to_ollama(self, payload: Dict) -> Dict:
         url = self.base_url + "/api/chat"
@@ -224,26 +150,14 @@ class PolicyTranslationService:
             "options": {"temperature": 0},
         }
         outer = self._post_to_ollama(payload)
-        content = self._strip_code_fence(str(outer.get("message", {}).get("content", "")).strip())
+        content = str(outer.get("message", {}).get("content", "")).strip()
         if not content:
             raise RuntimeError("Empty translation response.")
 
         try:
             parsed = json.loads(content)
-        except json.JSONDecodeError:
-            return {
-                "translated_text": content,
-                "translation_source": model_name,
-            }
-
-        if isinstance(parsed, str):
-            translated_text = parsed.strip()
-            if translated_text:
-                return {
-                    "translated_text": translated_text,
-                    "translation_source": model_name,
-                }
-            raise RuntimeError(f"Unexpected translation payload: {parsed}")
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"Failed to parse translation JSON: {content}") from exc
 
         if not isinstance(parsed, dict):
             raise RuntimeError(f"Unexpected translation payload: {parsed}")
@@ -261,7 +175,6 @@ class PolicyTranslationService:
             if len(string_values) == 1:
                 normalized["translated_text"] = string_values[0]
 
-        normalized["translation_source"] = str(normalized.get("translation_source", "") or model_name)
         return normalized
 
     @staticmethod
@@ -313,23 +226,21 @@ class PolicyTranslationService:
 
         env_specific = os.getenv(f"QWEN_TRANSLATION_MODEL_{target_lang.upper()}")
         env_generic = os.getenv("QWEN_TRANSLATION_MODEL")
-        deployed_translation_model = "benepick-qwen35-translation:latest"
 
         if env_specific:
             candidates.append(env_specific)
-        if target_lang == "en" and self._ollama_model_exists(deployed_translation_model):
-            candidates.append(deployed_translation_model)
-        if target_lang in {"zh", "ja"}:
-            candidates.append("qwen3:4b")
         if env_generic:
             candidates.append(env_generic)
         candidates.append(self.model_name)
+        if target_lang in {"zh", "ja"}:
+            candidates.append("qwen3:4b")
+        candidates.append("qwen3.5:4b")
 
         deduped: list[str] = []
         seen: set[str] = set()
         for candidate in candidates:
             normalized = str(candidate or "").strip()
-            if not normalized or normalized in seen or normalized in self._disabled_candidate_models:
+            if not normalized or normalized in seen:
                 continue
             deduped.append(normalized)
             seen.add(normalized)
@@ -383,38 +294,12 @@ class PolicyTranslationService:
         )
         last_error: Exception | None = None
         data: Dict[str, str] | None = None
-
-        if self._local_lora_enabled():
-            if self._base_model_available_locally(self.local_base_model):
-                try:
-                    candidate_data = dict(self._call_local_lora_json(messages))
-                    candidate_data["translation_source"] = "local_lora"
-                    if str(candidate_data.get("translated_text", "")).strip():
-                        data = candidate_data
-                    else:
-                        last_error = RuntimeError("Local translation LoRA returned an empty translation.")
-                        data = None
-                except Exception as exc:
-                    last_error = exc
-                    data = None
-            else:
-                last_error = RuntimeError(
-                    "Local translation LoRA is configured, but the base model is not available locally."
-                )
-
         for candidate_model in self._candidate_models(target_lang):
-            if data is not None:
-                break
             try:
-                candidate_data = self._call_model_json_for_model(candidate_model, messages, schema)
-                if str(candidate_data.get("translated_text", "")).strip():
-                    data = candidate_data
-                    break
-                last_error = RuntimeError(f"Model {candidate_model} returned an empty translation.")
-                self._disabled_candidate_models.add(candidate_model)
+                data = self._call_model_json_for_model(candidate_model, messages, schema)
+                break
             except Exception as exc:
                 last_error = exc
-                self._disabled_candidate_models.add(candidate_model)
                 continue
 
         if data is None:
@@ -434,6 +319,6 @@ class PolicyTranslationService:
         return {
             "language": target_lang,
             "translated_text": translated_text,
-            "translation_source": str(data.get("translation_source", "") or "qwen"),
+            "translation_source": "qwen",
             "is_fallback": False,
         }

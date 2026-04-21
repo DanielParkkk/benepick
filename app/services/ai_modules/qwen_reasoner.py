@@ -6,7 +6,11 @@ import urllib.request
 from typing import Dict, List, Optional
 
 import pandas as pd
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:  # pragma: no cover - optional local convenience
+    def load_dotenv(*args, **kwargs) -> bool:
+        return False
 
 from .prompt_builder import PromptBuilder
 from .text_preprocessor import clean_policy_text
@@ -25,7 +29,7 @@ class QwenReasoner:
     ) -> None:
         load_dotenv()
 
-        self.model_name = model_name or os.getenv("QWEN_MODEL", "qwen3.5:4b")
+        self.model_name = model_name or os.getenv("QWEN_REASONER_MODEL") or os.getenv("QWEN_MODEL", "qwen3.5:4b")
         self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
         self.timeout = float(timeout or os.getenv("OLLAMA_TIMEOUT", "300"))
         self.prompt_path = prompt_path or os.getenv("REJECT_GUIDE_PROMPT_PATH", "prompts/prompt_reject_guide.txt")

@@ -23,32 +23,63 @@ class PolicyDetailEnrichmentService:
         base_dir = Path(__file__).resolve().parent / "ai_modules"
         prompt_dir = base_dir / "prompts"
         csv_path = str(base_dir / "benepick_dict.csv")
-        qwen_model = os.getenv("QWEN_MODEL", "qwen3.5:4b")
+        summary_model = os.getenv("QWEN_SUMMARY_MODEL") or os.getenv("QWEN_MODEL", "qwen3.5:4b")
+        translation_model = os.getenv("QWEN_TRANSLATION_MODEL", "benepick-qwen35-translation:latest")
+        reasoner_model = os.getenv("QWEN_REASONER_MODEL") or summary_model
 
         self.guard = OutputGuard()
-        self.enabled = True
+        self.summary_model = summary_model
+        self.translation_model = translation_model
+        self.reasoner_model = reasoner_model
+        self.summary_service: PolicySummaryService | None = None
+        self.translation_service: PolicyTranslationService | None = None
+        self.reasoner: QwenReasoner | None = None
+        self.enabled = False
         self.init_error: str | None = None
         self._detail_cache: OrderedDict[str, dict[str, object]] = OrderedDict()
         self._cache_lock = Lock()
 
+        errors: list[str] = []
         try:
             self.summary_service = PolicySummaryService(
-                model_name=qwen_model,
+                model_name=summary_model,
                 prompt_path=str(prompt_dir / "prompt_summary.txt"),
             )
+        except Exception as exc:
+            errors.append(f"summary: {exc}")
+
+        try:
             self.translation_service = PolicyTranslationService(
                 csv_path=csv_path,
-                model_name=qwen_model,
+                model_name=translation_model,
                 prompt_path=str(prompt_dir / "prompt_translation.txt"),
             )
+        except Exception as exc:
+            errors.append(f"translation: {exc}")
+
+        try:
             self.reasoner = QwenReasoner(
                 csv_path=csv_path,
-                model_name=qwen_model,
+                model_name=reasoner_model,
                 prompt_path=str(prompt_dir / "prompt_reject_guide.txt"),
             )
         except Exception as exc:
-            self.enabled = False
-            self.init_error = str(exc)
+            errors.append(f"reasoner: {exc}")
+
+        self.enabled = any((self.summary_service, self.translation_service, self.reasoner))
+        self.init_error = "; ".join(errors) if errors else None
+
+    def status(self) -> dict[str, object]:
+        return {
+            "ai_ok": self.enabled,
+            "ai_error": self.init_error,
+            "summary_ok": self.summary_service is not None,
+            "translation_ok": self.translation_service is not None,
+            "reasoner_ok": self.reasoner is not None,
+            "summary_model": self.summary_model,
+            "translation_model": self.translation_model,
+            "reasoner_model": self.reasoner_model,
+        }
 
     @staticmethod
     def _dedupe_keep_order(items: list[str], *, limit: int = 3) -> list[str]:
@@ -65,7 +96,7 @@ class PolicyDetailEnrichmentService:
         return out
 
     def _translate_list(self, items: list[str], policy_text: str, target_lang: str) -> list[str]:
-        if target_lang == "ko" or not items or not self.enabled:
+        if target_lang == "ko" or not items or self.translation_service is None:
             return items
 
         translated: list[str] = []
@@ -174,7 +205,7 @@ class PolicyDetailEnrichmentService:
 
         if target_lang == "ko":
             summary_data: dict = {}
-            if self.enabled:
+            if self.summary_service is not None:
                 try:
                     summary_data = self.summary_service.summarize_policy(policy_text)
                 except Exception:
@@ -187,7 +218,7 @@ class PolicyDetailEnrichmentService:
             )
             summary_text = summary_guarded["summary"]
 
-            if self.enabled and user_condition_text:
+            if self.reasoner is not None and user_condition_text:
                 try:
                     analyzed = self.reasoner.analyze_rejection_and_guide(
                         policy_text=policy_text,
@@ -201,7 +232,7 @@ class PolicyDetailEnrichmentService:
                     pass
         elif not summary_text:
             summary_data = {}
-            if self.enabled:
+            if self.summary_service is not None:
                 try:
                     summary_data = self.summary_service.summarize_policy(policy_text)
                 except Exception:
@@ -217,7 +248,7 @@ class PolicyDetailEnrichmentService:
         if not actions:
             actions = ["정책 원문에서 세부 자격 요건과 신청 조건을 다시 확인해 주세요."]
 
-        if target_lang != "ko" and self.enabled:
+        if target_lang != "ko" and self.translation_service is not None:
             translation_context = summary_text or fallback_summary or policy_text
             try:
                 source_summary = summary_text

@@ -7,7 +7,11 @@ import urllib.error
 import urllib.request
 from typing import Dict, List, Optional
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:  # pragma: no cover - optional local convenience
+    def load_dotenv(*args, **kwargs) -> bool:
+        return False
 
 from .policy_heuristics import (
     assemble_korean_summary,
@@ -37,7 +41,7 @@ class PolicySummaryService:
     ) -> None:
         load_dotenv()
 
-        self.model_name = model_name or os.getenv("QWEN_MODEL", "qwen3.5:4b")
+        self.model_name = model_name or os.getenv("QWEN_SUMMARY_MODEL") or os.getenv("QWEN_MODEL", "qwen3.5:4b")
         self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
         self.timeout = float(timeout or os.getenv("OLLAMA_TIMEOUT", "300"))
         self.prompt_path = prompt_path or os.getenv("SUMMARY_PROMPT_PATH", "prompts/prompt_summary.txt")
@@ -105,47 +109,7 @@ class PolicySummaryService:
         compact = re.sub(r"\s+", " ", str(text or "").strip())
         if len(compact) <= limit:
             return compact
-        return compact[: limit - 3].rstrip() + "..."
-
-    @staticmethod
-    def _split_sentences(text: str) -> List[str]:
-        compact = re.sub(r"\s+", " ", str(text or "").strip())
-        if not compact:
-            return []
-        chunks = re.split(r"(?<=[.!?])\s+", compact)
-        return [chunk.strip() for chunk in chunks if chunk and chunk.strip()]
-
-    def _build_text_fallback_summary(self, text: str, limit: int = 180) -> str:
-        sentences = self._split_sentences(text)
-        if not sentences:
-            return self._clip_text(text, limit=limit)
-
-        summary_parts: List[str] = []
-        current_length = 0
-        for sentence in sentences:
-            candidate = sentence if sentence.endswith((".", "!", "?")) else f"{sentence}."
-            extra = len(candidate) + (1 if summary_parts else 0)
-            if summary_parts and current_length + extra > limit:
-                break
-            if not summary_parts and len(candidate) > limit:
-                return self._clip_text(candidate, limit=limit)
-            summary_parts.append(candidate)
-            current_length += extra
-            if len(summary_parts) >= 2:
-                break
-
-        if not summary_parts:
-            return self._clip_text(text, limit=limit)
-        return " ".join(summary_parts).strip()
-
-    @staticmethod
-    def _is_generic_summary(summary: str, policy_name: str) -> bool:
-        normalized_summary = re.sub(r"\s+", " ", str(summary or "").strip())
-        normalized_policy_name = re.sub(r"\s+", " ", str(policy_name or "").strip()) or "\ud574\ub2f9 \uc815\ucc45"
-        return normalized_summary in {
-            f"{normalized_policy_name}\uc5d0 \ub300\ud55c \uc815\ucc45 \uc548\ub0b4\uc785\ub2c8\ub2e4.",
-            "\ud574\ub2f9 \uc815\ucc45\uc5d0 \ub300\ud55c \uc815\ucc45 \uc548\ub0b4\uc785\ub2c8\ub2e4.",
-        }
+        return compact[: limit - 1].rstrip() + "…"
 
     def _merge_fields(self, model_data: Dict, heuristic_facts: Dict[str, str]) -> Dict[str, str]:
         merged: Dict[str, str] = {}
@@ -181,12 +145,6 @@ class PolicySummaryService:
         heuristic_facts = extract_policy_facts(cleaned_policy_text or raw_policy_text)
         fallback_fields = self._merge_fields({}, heuristic_facts)
         fallback_summary = assemble_korean_summary(fallback_fields)
-        preferred_summary = clean_fact_value(
-            heuristic_facts.get("summary", "")
-            or heuristic_facts.get("benefit", "")
-            or heuristic_facts.get("description", "")
-        )
-        text_fallback_summary = self._build_text_fallback_summary(cleaned_policy_text or raw_policy_text, limit=180)
 
         model_data: Dict[str, str] = {}
         if cleaned_policy_text:
@@ -198,31 +156,12 @@ class PolicySummaryService:
                 model_data = {}
 
         merged_fields = self._merge_fields(model_data, heuristic_facts)
-        summary_source = "qwen" if model_data else "heuristic"
         summary = assemble_korean_summary(merged_fields) or fallback_summary
-        detail_fields = ("target", "benefit", "conditions", "how_to_apply")
-        detail_count = sum(1 for field in detail_fields if merged_fields.get(field))
-        repeated_summary_fields = (
-            bool(preferred_summary)
-            and merged_fields.get("target") == preferred_summary
-            and merged_fields.get("benefit") == preferred_summary
-            and not merged_fields.get("conditions")
-            and not merged_fields.get("how_to_apply")
-        )
-
-        if preferred_summary and (repeated_summary_fields or self._is_generic_summary(summary, merged_fields["policy_name"])):
-            summary = preferred_summary
-            summary_source = "qwen_text_fallback" if model_data else "heuristic_text"
-        elif text_fallback_summary and (detail_count == 0 or self._is_generic_summary(summary, merged_fields["policy_name"])):
-            summary = text_fallback_summary
-            summary_source = "qwen_text_fallback" if model_data else "heuristic_text"
-
         if not summary:
-            summary = preferred_summary or text_fallback_summary or self._clip_text(cleaned_policy_text or raw_policy_text, limit=180)
+            summary = self._clip_text(cleaned_policy_text or raw_policy_text, limit=180)
 
         if not self._looks_like_korean(summary):
-            summary = preferred_summary or text_fallback_summary or fallback_summary or self._clip_text(cleaned_policy_text or raw_policy_text, limit=180)
-            summary_source = "heuristic_text"
+            summary = fallback_summary or self._clip_text(cleaned_policy_text or raw_policy_text, limit=180)
 
         if not summary:
             raise RuntimeError("Summary generation failed.")
@@ -230,7 +169,7 @@ class PolicySummaryService:
         return {
             "language": "ko",
             "summary": summary,
-            "summary_source": summary_source,
+            "summary_source": "qwen" if model_data else "heuristic",
             "policy_name": merged_fields["policy_name"],
             "target": merged_fields["target"],
             "benefit": merged_fields["benefit"],

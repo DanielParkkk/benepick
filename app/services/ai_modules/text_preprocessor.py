@@ -8,8 +8,6 @@ from .policy_heuristics import _classify_label, _split_labeled_line, normalize_s
 KEEP_PREFIXES = [
     "\uC815\uCC45\uBA85",
     "\uC815\uCC45 \uC694\uC57D",
-    "\uC11C\uBE44\uC2A4\uC694\uC57D",
-    "\uC11C\uBE44\uC2A4 \uC694\uC57D",
     "\uC815\uCC45 \uC124\uBA85",
     "\uC9C0\uC6D0 \uB300\uC0C1",
     "\uC9C0\uC6D0 \uB0B4\uC6A9",

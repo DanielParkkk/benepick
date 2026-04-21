@@ -36,11 +36,6 @@ class OutputGuard:
         lowered = re.sub(r"[^a-z\u00C0-\u024F]+", " ", lowered)
         return f" {lowered.strip()} "
 
-    @staticmethod
-    def _script_ratio(count: int, text: str) -> float:
-        total = len(re.findall(r"[A-Za-z\u00C0-\u024F\uAC00-\uD7A3\u4E00-\u9FFF\u3040-\u30FF]", str(text or "")))
-        return 0.0 if total == 0 else count / total
-
     def _looks_like_english(self, text: str) -> bool:
         markers = self._normalize_marker_text(text)
         latin = self._count(r"[A-Za-z]", text)
@@ -62,18 +57,17 @@ class OutputGuard:
         han = self._count(r"[\u4E00-\u9FFF]", text)
         kana = self._count(r"[\u3040-\u30FF]", text)
         latin = self._count(r"[A-Za-z]", text)
-        hangul_ratio = self._script_ratio(hangul, text)
 
         if target_lang == "ko":
             return hangul >= 2
         if target_lang == "en":
-            return hangul_ratio <= 0.35 and han == 0 and kana == 0 and self._looks_like_english(text)
+            return hangul <= 6 and han == 0 and kana == 0 and self._looks_like_english(text)
         if target_lang == "zh":
-            return han >= 6 and hangul_ratio <= 0.45 and kana == 0
+            return han >= 6 and hangul <= 6 and kana == 0
         if target_lang == "ja":
-            return hangul_ratio <= 0.45 and (kana >= 2 or any(marker in text for marker in self.JA_MARKERS)) and (kana + han) >= 8
+            return hangul <= 40 and (kana >= 2 or any(marker in text for marker in self.JA_MARKERS)) and (kana + han) >= 8
         if target_lang == "vi":
-            return hangul_ratio <= 0.35 and han == 0 and kana == 0 and self._looks_like_vietnamese(text)
+            return hangul <= 6 and han == 0 and kana == 0 and self._looks_like_vietnamese(text)
         return latin > 0 or hangul > 0 or han > 0 or kana > 0
 
     def guard_summary(

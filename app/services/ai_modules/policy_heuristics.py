@@ -24,8 +24,6 @@ FIELD_KEYWORDS = {
     ],
     "summary": [
         "\uC815\uCC45 \uC694\uC57D",
-        "\uC11C\uBE44\uC2A4\uC694\uC57D",
-        "\uC11C\uBE44\uC2A4 \uC694\uC57D",
         "summary",
     ],
     "description": [
