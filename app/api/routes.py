@@ -65,14 +65,14 @@ def build_rag_fallback_policy(reference_id: str, *, index: int) -> PolicySummary
     score = max(65, 86 - ((index - 1) * 4))
     return build_policy_summary(
         policy_id=reference_id or f"rag-fallback-{index}",
-        title=f"RAG recommended policy #{index}",
-        description="The relational policy database is unavailable, so this item is based on RAG retrieval.",
+        title=f"RAG 기반 추천 정책 {index}",
+        description="정책 DB 조회가 일시적으로 불안정하여 RAG 검색 결과를 기준으로 추천했습니다.",
         match_score=score,
         apply_status=ApplyStatus.NEEDS_CHECK,
         benefit_amount=None,
-        benefit_amount_label="Check official notice",
-        benefit_summary="RAG fallback recommendation",
-        badge_items=["RAG", "fallback"],
+        benefit_amount_label="공식 공고 확인 필요",
+        benefit_summary="RAG 기반 임시 추천",
+        badge_items=["RAG", "임시추천"],
         sort_order=index,
     )
 
@@ -95,14 +95,14 @@ def build_rag_only_analysis_response(
         policies = [
             build_policy_summary(
                 policy_id="rag-fallback-1",
-                title="Policy recommendation is temporarily limited",
-                description="The service is online, but policy DB lookup returned no candidates.",
+                title="정책 추천 결과를 임시로 제한해 보여드립니다",
+                description="서비스는 정상 동작 중이지만 정책 DB 조회 결과가 없어 기본 추천을 표시합니다.",
                 match_score=70,
                 apply_status=ApplyStatus.NEEDS_CHECK,
                 benefit_amount=None,
-                benefit_amount_label="Check official notice",
-                benefit_summary="Temporary fallback recommendation",
-                badge_items=["fallback"],
+                benefit_amount_label="공식 공고 확인 필요",
+                benefit_summary="임시 추천 결과",
+                badge_items=["임시추천"],
                 sort_order=1,
             )
         ]
@@ -112,7 +112,7 @@ def build_rag_only_analysis_response(
         data=AnalyzeResponseData(
             profile_summary=ProfileSummary(analysis_score=analysis_score, tags=get_profile_tags(request)),
             policies=policies,
-            rag_answer=rag_answer or "RAG fallback response is being used because the policy database is temporarily unavailable.",
+            rag_answer=rag_answer or "정책 DB 조회가 일시적으로 불안정하여 RAG 검색 기반 임시 추천을 표시합니다.",
             rag_docs_used=docs_used,
             unmatched_policies=[
                 UnmatchedPolicyItem(reference_id=reference_id, source=infer_source_from_reference(reference_id))
