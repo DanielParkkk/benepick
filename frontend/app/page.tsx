@@ -41,6 +41,13 @@ const HOUSING_OPTIONS: Record<string, string> = {
   "다문화 가구": "MONTHLY_RENT", "조손 가구": "OWNER_FAMILY_HOME",
   "노인 단독 가구": "OWNER_FAMILY_HOME",
 };
+const INTEREST_TAG_OPTIONS = [
+  { code: "housing", label: "주거" },
+  { code: "finance", label: "금융" },
+  { code: "employment", label: "취업" },
+  { code: "medical", label: "의료" },
+  { code: "education", label: "교육" },
+];
 
 const STATIC_POLICIES: PolicySummary[] = [
   {
@@ -158,6 +165,7 @@ export default function DashboardPage() {
   const [family, setFamily] = useState("1인 가구");
   const [employment, setEmployment] = useState("미취업");
   const [disability, setDisability] = useState("없음");
+  const [interestTags, setInterestTags] = useState<string[]>(["housing"]);
 
   // 검색
   const [searchQuery, setSearchQuery] = useState("");
@@ -171,6 +179,7 @@ export default function DashboardPage() {
   const [analysisResult, setAnalysisResult] = useState<AnalyzeResponse | null>(null);
   const [policies, setPolicies] = useState<PolicySummary[]>(STATIC_POLICIES);
   const [lastUpdated, setLastUpdated] = useState("오늘 오전 9:42");
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
   // 체크리스트
   const [checklist, setChecklist] = useState([
@@ -192,7 +201,14 @@ export default function DashboardPage() {
     return m ? parseInt(m[0]) : 27;
   };
 
+  const toggleInterestTag = (code: string) => {
+    setInterestTags((prev) =>
+      prev.includes(code) ? prev.filter((item) => item !== code) : [...prev, code]
+    );
+  };
+
   const runAnalysis = async () => {
+    setAnalysisError(null);
     setLoading(true);
     const now = new Date();
     setLastUpdated(`오늘 ${now.getHours()}시 ${now.getMinutes()}분`);
@@ -206,12 +222,17 @@ export default function DashboardPage() {
         household_type: HOUSEHOLD_MAP[family] || "SINGLE",
         employment_status: EMPLOYMENT_MAP[employment] || "UNEMPLOYED",
         housing_status: HOUSING_OPTIONS[family] || "MONTHLY_RENT",
+        interest_tags: interestTags,
       });
       setAnalysisResult(data);
       setPolicies(data.policies);
     } catch (err) {
       console.warn("분석 API 오류, 기본 데이터 사용:", err);
-      // 폴백: 정적 데이터 유지
+      const message =
+        err instanceof Error
+          ? err.message
+          : "분석 요청 중 오류가 발생했습니다. 기본 추천 결과를 표시합니다.";
+      setAnalysisError(message);
     } finally {
       setLoading(false);
     }
@@ -248,10 +269,10 @@ export default function DashboardPage() {
   const totalBenefit = policies.reduce((s, p) => s + (p.benefit_amount || 0), 0);
   const totalBenefitLabel =
     totalBenefit >= 10000000
-      ? `${Math.round(totalBenefit / 10000).toLocaleString()}만`
+      ? `${Math.round(totalBenefit / 10000).toLocaleString()}만원`
       : totalBenefit > 0
       ? `${totalBenefit.toLocaleString()}원`
-      : "1,040만";
+      : "1,040만원";
 
   const navigateToDetail = (policyId: string) => {
     if (typeof window !== "undefined") {
@@ -378,6 +399,13 @@ export default function DashboardPage() {
                   {disability !== "없음" && (
                     <span className="profile-tag">♿ 장애인</span>
                   )}
+                  {interestTags.map((code) => {
+                    const found = INTEREST_TAG_OPTIONS.find((item) => item.code === code);
+                    if (!found) return null;
+                    return (
+                      <span key={code} className="profile-tag">⭐ {found.label}</span>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -437,9 +465,50 @@ export default function DashboardPage() {
                     </select>
                   </div>
                 </div>
+                <div style={{ marginTop: 12, marginBottom: 12 }}>
+                  <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+                    관심 분야 (최대 3개 권장)
+                  </label>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {INTEREST_TAG_OPTIONS.map((item) => (
+                      <button
+                        key={item.code}
+                        type="button"
+                        onClick={() => toggleInterestTag(item.code)}
+                        style={{
+                          borderRadius: 999,
+                          padding: "6px 12px",
+                          border: interestTags.includes(item.code) ? "1px solid var(--blue)" : "1px solid var(--gray-200)",
+                          background: interestTags.includes(item.code) ? "rgba(37,99,235,.10)" : "#fff",
+                          color: interestTags.includes(item.code) ? "var(--blue)" : "var(--gray-700)",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <button className="analyze-btn" onClick={runAnalysis} disabled={loading}>
                   {loading ? "⏳ 분석 중..." : "🔍 수급 가능성 AI 분석 시작하기"}
                 </button>
+                {analysisError && (
+                  <p
+                    style={{
+                      marginTop: 10,
+                      fontSize: 13,
+                      color: "#B42318",
+                      background: "rgba(217, 45, 32, 0.08)",
+                      border: "1px solid rgba(217, 45, 32, 0.25)",
+                      borderRadius: 8,
+                      padding: "8px 10px",
+                    }}
+                  >
+                    {analysisError}
+                  </p>
+                )}
               </div>
 
               {/* RAG 답변 */}
@@ -525,7 +594,6 @@ export default function DashboardPage() {
                   <div className="stat-item">
                     <div className="val green">
                       {totalBenefitLabel}
-                      <span style={{ fontSize: 14 }}>만</span>
                     </div>
                     <div className="lbl">예상 수혜액</div>
                   </div>
@@ -542,7 +610,7 @@ export default function DashboardPage() {
               <div className="sidebar-card">
                 <h4>💼 추천 포트폴리오</h4>
                 <div className="portfolio-total">
-                  <div className="amount">{totalBenefitLabel}만원</div>
+                  <div className="amount">{totalBenefitLabel}</div>
                   <div className="lbl">총 예상 연간 수혜액</div>
                 </div>
                 <div className="portfolio-items">

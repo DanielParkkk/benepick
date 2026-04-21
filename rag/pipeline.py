@@ -1,8 +1,12 @@
 import os
+import pickle
+import re
 import time
 from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
+import pandas as pd
+from rank_bm25 import BM25Okapi
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 HF_CACHE_ROOT = PROJECT_ROOT / ".cache" / "huggingface"
@@ -20,45 +24,197 @@ load_dotenv()
 
 # ── LLM 초기화: GROQ_API_KEY 있으면 Groq, 없으면 Ollama ──
 import threading
-_GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-if _GROQ_API_KEY:
+
+
+def _init_openai_llm():
+    from langchain_openai import ChatOpenAI
+    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    return ChatOpenAI(model=model, temperature=0.3, max_tokens=512), f"OpenAI ({model})"
+
+
+def _init_groq_llm():
     from langchain_groq import ChatGroq
-    llm = ChatGroq(
-        model="llama-3.1-8b-instant",
-        temperature=0.3,
-        max_tokens=512,
-    )
-    print("LLM: Groq (llama-3.1-8b-instant)")
-else:
+    model = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+    return ChatGroq(model=model, temperature=0.3, max_tokens=512), f"Groq ({model})"
+
+
+def _init_ollama_llm():
     from langchain_ollama import ChatOllama
-    llm = ChatOllama(
-        model="qwen3.5:4b",
-        temperature=0.3,
-        num_predict=512,
-    )
-    print("LLM: Ollama (qwen3.5:4b)")
+    model = os.getenv("OLLAMA_MODEL", "qwen3.5:4b")
+    return ChatOllama(model=model, temperature=0.3, num_predict=512), f"Ollama ({model})"
+
+
+def _build_llm():
+    """
+    Provider selection priority:
+    1) BENEPICK_LLM_PROVIDER (explicit override)
+    2) BENEPICK_LLM_MODE=experiment|prod
+    3) key-based auto fallback
+    """
+    llm_mode = os.getenv("BENEPICK_LLM_MODE", "auto").strip().lower()
+    provider_override = os.getenv("BENEPICK_LLM_PROVIDER", "").strip().lower()
+    experiment_provider = os.getenv("BENEPICK_EXPERIMENT_PROVIDER", "openai").strip().lower()
+    prod_provider = os.getenv("BENEPICK_PROD_PROVIDER", "groq").strip().lower()
+
+    provider_candidates = []
+    if provider_override in {"openai", "groq", "ollama"}:
+        provider_candidates.append(provider_override)
+    elif llm_mode == "experiment":
+        provider_candidates.extend([experiment_provider, "openai", "groq", "ollama"])
+    elif llm_mode == "prod":
+        provider_candidates.extend([prod_provider, "groq", "openai", "ollama"])
+    else:
+        if os.getenv("OPENAI_API_KEY"):
+            provider_candidates.append("openai")
+        if os.getenv("GROQ_API_KEY"):
+            provider_candidates.append("groq")
+        provider_candidates.append("ollama")
+
+    seen = set()
+    ordered_candidates = []
+    for provider in provider_candidates:
+        if provider and provider not in seen:
+            seen.add(provider)
+            ordered_candidates.append(provider)
+
+    errors = []
+    for provider in ordered_candidates:
+        try:
+            if provider == "openai":
+                if not os.getenv("OPENAI_API_KEY"):
+                    raise RuntimeError("OPENAI_API_KEY is not set")
+                return _init_openai_llm()
+            if provider == "groq":
+                if not os.getenv("GROQ_API_KEY"):
+                    raise RuntimeError("GROQ_API_KEY is not set")
+                return _init_groq_llm()
+            if provider == "ollama":
+                return _init_ollama_llm()
+        except Exception as exc:
+            errors.append(f"{provider}: {exc}")
+
+    raise RuntimeError("No LLM provider could be initialized. " + "; ".join(errors))
+
+
+llm, llm_label = _build_llm()
+print(f"LLM: {llm_label}")
 
 # ── searcher/reranker 지연 로딩 ──
 _searcher = None
+_searcher_mode = "uninitialized"
 _reranker = None
 _searcher_lock = threading.Lock()
 _reranker_lock = threading.Lock()
+ENABLE_RERANKER = os.getenv("BENEPICK_ENABLE_RERANKER", "0" if os.name == "nt" else "1") == "1"
+FORCE_BM25_FALLBACK = os.getenv("BENEPICK_FORCE_BM25_FALLBACK", "0") == "1"
 
 # ── CUDA 사용 가능 여부 ──
 import torch as _torch
 _USE_CUDA = _torch.cuda.is_available()
 
+
+class BM25FallbackSearcher:
+    """Low-memory fallback searcher used when dense model init fails."""
+
+    def __init__(self) -> None:
+        processed_path = PROJECT_ROOT / "processed"
+        df_welfare = pd.read_csv(processed_path / "chunks.csv")
+        df_gov24 = pd.read_csv(processed_path / "gov24" / "chunks.csv")
+        self.df_chunks = pd.concat([df_welfare, df_gov24], ignore_index=True).set_index("chunk_id", drop=False)
+        self.chunk_ids = self.df_chunks["chunk_id"].tolist()
+
+        tokenized = None
+        cache_path = processed_path / "bm25_cache.pkl"
+        if cache_path.exists():
+            try:
+                with open(cache_path, "rb") as cache_file:
+                    tokenized = pickle.load(cache_file)
+            except Exception as exc:
+                print(f"[Searcher] BM25 cache load failed: {exc}; rebuilding tokens.")
+
+        if not tokenized or len(tokenized) != len(self.chunk_ids):
+            tokenized = [
+                self._simple_tokenize(text)
+                for text in self.df_chunks["text"].fillna("").astype(str).tolist()
+            ]
+
+        self.bm25 = BM25Okapi(tokenized)
+        print(f"[Searcher] BM25 fallback ready ({len(self.chunk_ids)} chunks).")
+
+    @staticmethod
+    def _simple_tokenize(text: str) -> list[str]:
+        tokens = re.findall(r"[0-9A-Za-z가-힣]+", str(text).lower())
+        return [token for token in tokens if len(token) >= 2]
+
+    def search(self, query: str, top_k: int = 5, alpha: float = 0.6, user_region: str = "") -> list:
+        _ = alpha  # keep signature compatible with HybridSearcher.search
+        query_tokens = self._simple_tokenize(query)
+        if not query_tokens:
+            query_tokens = ["복지", "정책"]
+
+        raw_scores = self.bm25.get_scores(query_tokens)
+        max_score = float(raw_scores.max()) if len(raw_scores) else 0.0
+        normalized_scores = (raw_scores / max_score) if max_score > 0 else raw_scores
+
+        region_short = user_region[:2] if user_region else ""
+        final_scores: dict[str, float] = {}
+        for idx, chunk_id in enumerate(self.chunk_ids):
+            score = float(normalized_scores[idx])
+            if region_short:
+                row_region = str(self.df_chunks.loc[chunk_id, "region"])
+                if "전국" in row_region or region_short in row_region:
+                    score += 0.15
+            final_scores[chunk_id] = score
+
+        top_ids = sorted(final_scores, key=final_scores.get, reverse=True)[:top_k]
+        results = []
+        for rank, chunk_id in enumerate(top_ids, 1):
+            row = self.df_chunks.loc[chunk_id]
+            bm25_score = round(final_scores.get(chunk_id, 0.0), 4)
+            results.append({
+                "rank": rank,
+                "chunk_id": chunk_id,
+                "policy_id": str(row.get("policy_id", "")),
+                "policy_name": str(row.get("policy_name", "")),
+                "category": str(row.get("category", "")),
+                "region": str(row.get("region", "")),
+                "source_url": str(row.get("source_url", "")),
+                "score": bm25_score,
+                "vector_score": 0.0,
+                "bm25_score": bm25_score,
+                "evidence_text": str(row.get("text", "")),
+            })
+        return results
+
 def get_searcher():
-    global _searcher
+    global _searcher, _searcher_mode
     if _searcher is None:
         with _searcher_lock:
             if _searcher is None:
-                _searcher = HybridSearcher(device="cpu")
+                if FORCE_BM25_FALLBACK:
+                    print("[Searcher] BENEPICK_FORCE_BM25_FALLBACK=1 -> use BM25 fallback.")
+                    _searcher = BM25FallbackSearcher()
+                    _searcher_mode = "bm25_fallback"
+                    return _searcher
+                try:
+                    _searcher = HybridSearcher(device="cuda" if _USE_CUDA else "cpu")
+                    _searcher_mode = "hybrid_dense"
+                except Exception as exc:
+                    print(f"[Searcher] Hybrid init failed: {exc}")
+                    print("[Searcher] Switching to BM25 fallback mode.")
+                    _searcher = BM25FallbackSearcher()
+                    _searcher_mode = "bm25_fallback"
     return _searcher
+
+
+def is_searcher_ready() -> bool:
+    return _searcher is not None
 
 
 def get_reranker():
     global _reranker
+    if not ENABLE_RERANKER:
+        return None
     if _reranker is None:
         with _reranker_lock:
             if _reranker is None:
@@ -101,9 +257,14 @@ def rerank(query: str, results: list, top_k: int = 5) -> list:
     if not results:
         return []
 
+    reranker = get_reranker()
+    if reranker is None:
+        print("[Rerank] disabled by BENEPICK_ENABLE_RERANKER=0 -> use search ranking")
+        return sorted(results, key=lambda x: x.get("score", 0), reverse=True)[:top_k]
+
     texts = [r['evidence_text'] for r in results]
     pairs = [[query, text] for text in texts]
-    scores = get_reranker().compute_score(pairs, normalize=True)
+    scores = reranker.compute_score(pairs, normalize=True)
 
     # score 업데이트 (팀 규칙: float 0~1)
     for result, score in zip(results, scores):
@@ -111,6 +272,10 @@ def rerank(query: str, results: list, top_k: int = 5) -> list:
 
     reranked = sorted(results, key=lambda x: x['score'], reverse=True)
     return reranked[:top_k]
+
+
+def _elapsed_ms(started_at: float) -> int:
+    return round((time.perf_counter() - started_at) * 1000)
 
 
 # ── CRAG 품질 검증 ──
@@ -129,10 +294,17 @@ def crag_quality_check(query: str, results: list) -> list:
         return results
 
     elif quality >= QUALITY_MEDIUM:
-        print("[CRAG] 품질 보통 → 조건 완화 재검색")
+        print("[CRAG] medium quality: retry with relaxed query")
         relaxed = relax_query(query)
-        results2 = get_searcher().search(relaxed, top_k=25, alpha=0.6)
-        return rerank(query, results2, top_k=5)
+        try:
+            results2 = get_searcher().search(relaxed, top_k=25, alpha=0.6)
+            if not results2:
+                return _fallback(query)
+            return rerank(query, results2, top_k=5)
+        except Exception as e:
+            # Keep current docs on low-memory failures instead of crashing the whole request.
+            print(f"[CRAG relaxed retry failed] {e} -> keep current docs")
+            return results[:5]
 
     else:
         print("[CRAG] 품질 낮음 → 카테고리 폴백")
@@ -140,62 +312,105 @@ def crag_quality_check(query: str, results: list) -> list:
 
 
 def relax_query(query: str) -> str:
-    """지역/가구 수 같은 구체적 조건어 제거"""
-    stopwords = [
-        # 광역시/도
-        '서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종',
-        '경기', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주',
-        # 구/군 단위 (뒤에 붙는 형태 제거)
-        '강남구', '강북구', '강서구', '강동구', '관악구', '광진구', '구로구',
-        '금천구', '노원구', '도봉구', '동대문구', '동작구', '마포구', '서대문구',
-        '서초구', '성동구', '성북구', '송파구', '양천구', '영등포구', '용산구',
-        '은평구', '종로구', '중구', '중랑구',
-        # 가구/세대
-        '1인', '2인', '3인', '4인', '가구', '세대',
-        # 거주 표현
-        '거주', '사는', '살고있는',
+    """Remove profile/noise tokens so retry query focuses on policy intent."""
+    stopwords = {
+        # region
+        "서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종",
+        "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주",
+        "강남구", "강북구", "강서구", "강동구", "관악구", "광진구", "구로구",
+        "금천구", "노원구", "도봉구", "동대문구", "동작구", "마포구", "서대문구",
+        "서초구", "성동구", "성북구", "송파구", "양천구", "영등포구", "용산구",
+        "은평구", "종로구", "중구", "중랑구",
+        # profile
+        "무직", "실업", "미취업", "청년도", "청년", "single", "unemployed",
+        "age", "household", "region",
+        # household words
+        "가구", "세대", "거주", "사는", "살고있는",
+        # helper words
+        "있나요", "뭐예요", "알려줘", "정리해줘", "추천해줘",
+    }
+
+    intent_phrases = [
+        "신청하기 전에 확인해야 할 점을 정리해줘",
+        "이런 상황에서 함께 볼 만한 정책을 추천해줘",
+        "받을 수 있는 조건이 뭐예요",
+        "지원 금액이나 기간이 궁금해요",
+        "온라인으로 신청할 수 있나요",
+        "필요한 서류가 뭐예요",
+        "소득 기준이 있나요",
+        "서울에 살면 신청할 수 있나요",
+        "27세 무직 청년도 대상이 될 수 있나요",
+        "신청 방법을 알려줘",
     ]
-    relaxed = query
-    for word in stopwords:
-        relaxed = relaxed.replace(word, '').strip()
-    relaxed = ' '.join(relaxed.split())
+
+    text = query
+    for phrase in intent_phrases:
+        text = text.replace(phrase, " ")
+
+    raw_tokens = re.findall(r"[0-9A-Za-z가-힣]+", text.lower())
+    suffixes = ("에서", "에게", "으로", "로", "에는", "에서의", "에서만", "에", "은", "는", "이", "가", "을", "를", "도", "만")
+    kept = []
+    for token in raw_tokens:
+        t = token
+        for suffix in suffixes:
+            if t.endswith(suffix) and len(t) > len(suffix) + 1:
+                t = t[:-len(suffix)]
+                break
+        if re.fullmatch(r"\d+세", t) or re.fullmatch(r"\d+인", t):
+            continue
+        if t in stopwords:
+            continue
+        if len(t) < 2:
+            continue
+        kept.append(t)
+
+    relaxed = " ".join(kept[:8]).strip()
+    if not relaxed:
+        relaxed = " ".join(re.findall(r"[0-9A-Za-z가-힣]+", query))[:120].strip()
     print(f"[CRAG] 완화된 쿼리: '{query}' → '{relaxed}'")
     return relaxed
 
 
 def get_category_query(query: str) -> str:
-    """구체적 쿼리 → 상위 카테고리로 변환"""
-    category_map = {
-        '월세': '청년 주거 지원',
-        '전세': '청년 주거 지원',
-        '주거': '주거 지원',
-        '취업': '청년 고용 지원',
-        '실업': '청년 고용 지원',
-        '실직': '고용 지원',
-        '훈련비': '직업 훈련 지원',
-        '훈련': '직업 훈련 지원',
-        '생계': '저소득 생활 지원',
-        '의료': '의료비 지원',
-        '출산': '출산 육아 지원',
-        '육아': '출산 육아 지원',
-        '노인': '노인 복지 지원',
-        '기초연금': '노인 복지 지원',
-        '연금': '노인 복지 지원',
-        '장애': '장애인 복지 지원',
-        '긴급': '긴급복지 지원',
-        '수급': '기초생활 지원',
-    }
-    for keyword, category in category_map.items():
-        if keyword in query:
+    """Map noisy user query into stable category query for fallback retrieval."""
+    normalized = relax_query(query)
+    if not normalized:
+        normalized = query
+
+    rules = [
+        (("월세", "전세", "주거", "주택", "임대", "임차", "보증금", "무주택"), "청년 주거 지원"),
+        (("취업", "구직", "실업", "실직", "면접", "청년수당", "고용", "국민취업", "훈련", "내일배움"), "청년 고용 지원"),
+        (("창업", "예비창업", "사업화", "소상공인", "자영업", "정책자금"), "창업·소상공인 지원"),
+        (("자산", "적금", "저축", "금융", "도약계좌", "희망적금"), "청년 자산형성 지원"),
+        (("생계", "수급", "긴급복지", "기초생활"), "저소득 생활 지원"),
+        (("의료", "병원", "치료", "건강", "심리"), "의료·건강 지원"),
+        (("출산", "육아", "보육", "양육", "아동"), "출산·육아 지원"),
+        (("장애", "장애인"), "장애인 복지 지원"),
+        (("노인", "연금", "기초연금"), "노인 복지 지원"),
+        (("다문화", "한부모", "가족"), "가족 복지 지원"),
+    ]
+
+    for keywords, category in rules:
+        if any(k in normalized for k in keywords):
             return category
-    return query
+
+    if any(k in query for k in ("추천", "정리", "확인", "비교")):
+        return "복지 지원 정책"
+    return normalized
 
 
 def _fallback(query: str) -> list:
-    """상위 카테고리로 폴백 검색"""
+    """Fallback retrieval by category + rerank with original question."""
     fallback_query = get_category_query(query)
     print(f"[CRAG] 폴백 쿼리: '{fallback_query}'")
-    return get_searcher().search(fallback_query, top_k=5, alpha=0.6)
+    try:
+        candidates = get_searcher().search(fallback_query, top_k=25, alpha=0.6)
+        if not candidates:
+            return []
+        return rerank(query, candidates, top_k=5)
+    except Exception as e:
+        print(f"[CRAG fallback failed] {e}")
+        return []
 
 
 # ── LLM 답변 생성 ──
@@ -238,28 +453,91 @@ def generate_answer(query: str, docs: list, lang_code: str = "ko") -> str:
 
 
 def build_search_query(query: str, user_condition: dict) -> str:
-    """
-    user_condition을 자연어로 쿼리에 보강
-    예) "청년 월세 지원" + {region: "서울", age: 28} → "청년 월세 지원 서울 만 28세"
-    """
+    """Build an enriched retrieval query from user profile + preference tags."""
     if not user_condition:
         return query
 
     parts = [query]
     if user_condition.get("region"):
-        parts.append(user_condition["region"])
+        parts.append(str(user_condition["region"]))
     if user_condition.get("age"):
-        parts.append(f"만 {user_condition['age']}세")
+        parts.append(f"age {user_condition['age']}")
     if user_condition.get("income_level"):
-        parts.append(user_condition["income_level"])
+        parts.append(str(user_condition["income_level"]))
+    if user_condition.get("income_band"):
+        parts.append(str(user_condition["income_band"]))
     if user_condition.get("household_type"):
-        parts.append(user_condition["household_type"])
+        parts.append(str(user_condition["household_type"]))
     if user_condition.get("employment_status"):
-        parts.append(user_condition["employment_status"])
+        parts.append(str(user_condition["employment_status"]))
+    if user_condition.get("interest_tags"):
+        tags = [str(tag).strip() for tag in user_condition["interest_tags"] if str(tag).strip()]
+        if tags:
+            parts.append("interest_tags " + " ".join(tags))
 
     enriched = " ".join(parts)
-    print(f"[쿼리 보강] '{query}' → '{enriched}'")
+    print(f"[Query enrich] '{query}' -> '{enriched}'")
     return enriched
+
+
+def retrieve_rag_documents(user_query: str, user_condition: dict | None = None) -> dict:
+    user_condition = user_condition or {}
+    pipeline_started_at = time.perf_counter()
+
+    search_query = build_search_query(user_query, user_condition)
+
+    search_started_at = time.perf_counter()
+    results = get_searcher().search(
+        search_query,
+        top_k=25,
+        alpha=0.6,
+        user_region=user_condition.get("region", ""),
+    )
+    search_time_ms = _elapsed_ms(search_started_at)
+    if not results:
+        return error_response("SEARCH_FAILED", "검색 결과가 없습니다.")
+    print(f"[검색] {len(results)}개 후보 검색 완료 ({search_time_ms}ms)")
+
+    rerank_started_at = time.perf_counter()
+    try:
+        reranked = rerank(user_query, results, top_k=5)
+        print(f"[Rerank] {len(reranked)}개로 압축")
+    except Exception as e:
+        print(f"[Rerank 스킵] {e} -> 상위 5개 사용")
+        reranked = results[:5]
+    rerank_time_ms = _elapsed_ms(rerank_started_at)
+    print(f"[Timing] rerank={rerank_time_ms}ms")
+
+    crag_started_at = time.perf_counter()
+    try:
+        final_docs = crag_quality_check(user_query, reranked)
+    except Exception as e:
+        print(f"[CRAG failed] {e} -> keep reranked docs")
+        final_docs = reranked
+    crag_time_ms = _elapsed_ms(crag_started_at)
+    print(f"[Timing] crag={crag_time_ms}ms")
+    print(f"[CRAG] 최종 {len(final_docs)}개 문서 확정")
+
+    return success_response({
+        "query": user_query,
+        "user_condition": user_condition,
+        "search_time_ms": search_time_ms,
+        "rerank_time_ms": rerank_time_ms,
+        "crag_time_ms": crag_time_ms,
+        "total_retrieval_time_ms": _elapsed_ms(pipeline_started_at),
+        "docs_used": [
+            {
+                "policy_id": d["policy_id"],
+                "chunk_id": d["chunk_id"],
+                "policy_name": d["policy_name"],
+                "score": round(float(d["score"]), 4),
+                "rank": d["rank"],
+            }
+            for d in final_docs
+        ],
+        "final_docs": final_docs,
+        "doc_count": len(final_docs),
+    })
 
 
 def benepick_rag(
@@ -268,64 +546,49 @@ def benepick_rag(
     user_condition: dict = None,
 ) -> dict:
     """
-    베네픽 RAG 메인 파이프라인
-    ① 쿼리 보강 → ② 하이브리드 검색 → ③ Reranking
-    → ④ CRAG 품질 검증 → ⑤ LLM 답변 생성
-
-    user_condition: 사용자 조건 정보 (예: {"age": 28, "income_level": "중위소득 52%", "region": "서울"})
-    반환값: 팀 공통 성공/실패 응답 형식
+    BenePick RAG main pipeline.
+    Retrieval succeeds first, then answer generation is attempted.
     """
+    user_condition = user_condition or {}
+
     print(f"\n{'='*50}")
-    print(f"질문: {user_query}")
+    print(f"??: {user_query}")
     if user_condition:
-        print(f"조건: {user_condition}")
+        print(f"??: {user_condition}")
     print(f"{'='*50}")
 
     try:
-        # ① 쿼리 보강 (user_condition 반영)
-        search_query = build_search_query(user_query, user_condition)
+        pipeline_started_at = time.perf_counter()
+        retrieval_result = retrieve_rag_documents(user_query, user_condition)
+        if not retrieval_result.get("success"):
+            return retrieval_result
 
-        # ② 하이브리드 검색 (BM25 + 벡터)
-        search_start = time.time()
-        results = get_searcher().search(search_query, top_k=25, alpha=0.6, user_region=user_condition.get("region", ""))
-        search_time_ms = round((time.time() - search_start) * 1000)
-        if not results:
-            return error_response("SEARCH_FAILED", "검색 결과가 없습니다.")
-        print(f"[검색] {len(results)}개 후보 검색 완료 ({search_time_ms}ms)")
+        retrieval_data = retrieval_result.get("data") or {}
+        final_docs = retrieval_data.get("final_docs") or []
 
-        # ② Reranking (메모리 부족 시 스킵)
-        try:
-            reranked = rerank(user_query, results, top_k=5)
-            print(f"[Rerank] {len(reranked)}개로 압축")
-        except Exception as e:
-            print(f"[Rerank 스킵] {e} → 상위 5개 사용")
-            reranked = results[:5]
-
-        # ③ CRAG 품질 검증
-        final_docs = crag_quality_check(user_query, reranked)
-        print(f"[CRAG] 최종 {len(final_docs)}개 문서 확정")
-
-        # ④ LLM 답변 생성
+        answer_started_at = time.perf_counter()
         answer = generate_answer(user_query, final_docs, lang_code)
+        answer_time_ms = _elapsed_ms(answer_started_at)
+        total_time_ms = _elapsed_ms(pipeline_started_at)
+        print(
+            "[Timing] summary "
+            f"search={retrieval_data.get('search_time_ms')}ms "
+            f"rerank={retrieval_data.get('rerank_time_ms')}ms "
+            f"crag={retrieval_data.get('crag_time_ms')}ms "
+            f"answer={answer_time_ms}ms "
+            f"total={total_time_ms}ms"
+        )
 
-        # ── 반환 (팀 공통 응답 형식 + 변수명 규칙) ──
         return success_response({
-            "query":          user_query,
-            "answer":         answer,
-            "lang_code":      lang_code,           # string "ko"/"en" 등
-            "user_condition": user_condition,      # dict or None
-            "search_time_ms": search_time_ms,      # int, 검색 소요 시간(ms)
-            "docs_used":      [
-                {
-                    "policy_id":   d["policy_id"],    # string "101"
-                    "chunk_id":    d["chunk_id"],      # string "101_01"
-                    "policy_name": d["policy_name"],
-                    "score":       round(float(d["score"]), 4),  # float 0~1
-                    "rank":        d["rank"],          # int, 1부터 시작
-                }
-                for d in final_docs
-            ],
-            "doc_count":      len(final_docs),      # int
+            "query": user_query,
+            "answer": answer,
+            "lang_code": lang_code,
+            "user_condition": user_condition,
+            "search_time_ms": retrieval_data.get("search_time_ms"),
+            "rerank_time_ms": retrieval_data.get("rerank_time_ms"),
+            "crag_time_ms": retrieval_data.get("crag_time_ms"),
+            "docs_used": retrieval_data.get("docs_used") or [],
+            "doc_count": retrieval_data.get("doc_count", len(final_docs)),
         })
 
     except Exception as e:
@@ -333,7 +596,6 @@ def benepick_rag(
         return error_response("SEARCH_FAILED", str(e))
 
 
-# ── 테스트 ──
 if __name__ == "__main__":
     import pandas as pd
 

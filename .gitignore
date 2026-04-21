@@ -216,12 +216,14 @@ __marimo__/
 .claude/
 
 # ChromaDB / 벡터 DB
+chroma_db/
 chroma.sqlite3
 rag/chroma_db/
 
 # 벡터 인덱스 파일들
 *.bin
 *.pickle
+processed/bm25_cache.*
 
 # 프론트 빌드 캐시
 frontend/tsconfig.tsbuildinfo

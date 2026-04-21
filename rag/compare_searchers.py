@@ -18,10 +18,11 @@ from dotenv import load_dotenv
 from pipeline import rerank, crag_quality_check, generate_answer
 from langchain_ollama import ChatOllama
 from ragas import evaluate
-from ragas.metrics import faithfulness, answer_relevancy
+from ragas.metrics._faithfulness import Faithfulness
+from ragas.metrics._answer_relevance import AnswerRelevancy
 from ragas.llms import LangchainLLMWrapper
 from ragas.embeddings import LangchainEmbeddingsWrapper
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from datasets import Dataset
 
 load_dotenv()
@@ -82,7 +83,7 @@ def run_ragas(dataset_rows: list, ragas_llm, ragas_emb) -> dict:
     dataset = Dataset.from_list(dataset_rows)
     result  = evaluate(
         dataset=dataset,
-        metrics=[faithfulness, answer_relevancy],
+        metrics=[Faithfulness(), AnswerRelevancy()],
         llm=ragas_llm,
         embeddings=ragas_emb,
     )
@@ -104,7 +105,8 @@ def main():
     print("=" * 60)
 
     # 공통 LLM / Ragas 초기화
-    llm = ChatOllama(model="gemma3:4b", temperature=0.3)
+    # gemma3:4b 미설치 환경을 위해 qwen3.5:4b 를 우선 사용 (기설치 모델)
+    llm = ChatOllama(model="qwen3.5:4b", temperature=0.3)
     ragas_llm = LangchainLLMWrapper(llm)
     # Ragas 임베딩은 경량 모델 사용 (BGE-M3 중복 로딩 방지)
     ragas_emb = LangchainEmbeddingsWrapper(

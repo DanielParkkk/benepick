@@ -1,33 +1,37 @@
-$proj = "C:\Users\dlfns\OneDrive\바탕 화면\final_project-develope"
+﻿$proj = $PSScriptRoot
+$python = "C:\Users\dlfns\AppData\Local\Programs\Python\Python312\python.exe"
+$projectChromaPath = Join-Path $proj "chroma_db"
+$localChromaPath = Join-Path $env:LOCALAPPDATA "BenePick\chroma_db"
+$isOneDriveProject = $proj -like "*OneDrive*"
+$chromaPath = if ((Test-Path $projectChromaPath) -and -not $isOneDriveProject) { $projectChromaPath } else { $localChromaPath }
 
-Write-Host "BenePick 서버 시작 중..." -ForegroundColor Cyan
+if (-not (Test-Path $python)) {
+    throw "Python not found: $python"
+}
 
-# 1. Ollama (이미 실행 중이면 스킵)
+Write-Host "Starting BenePick services..." -ForegroundColor Cyan
+
+# 1. Ollama
 $ollamaRunning = Get-Process -Name "ollama" -ErrorAction SilentlyContinue
 if (-not $ollamaRunning) {
-    Write-Host "[1/4] Ollama 시작..." -ForegroundColor Yellow
+    Write-Host "[1/3] Starting Ollama..." -ForegroundColor Yellow
     Start-Process powershell -ArgumentList "-NoExit", "-Command", "ollama serve"
     Start-Sleep -Seconds 3
 } else {
-    Write-Host "[1/4] Ollama 이미 실행 중 - 스킵" -ForegroundColor Green
+    Write-Host "[1/3] Ollama already running" -ForegroundColor Green
 }
 
-# 2. ChromaDB
-Write-Host "[2/4] ChromaDB 시작 (port 8001)..." -ForegroundColor Yellow
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "chroma run --path '$proj\chroma_db' --port 8001"
-Start-Sleep -Seconds 3
-
-# 3. FastAPI 백엔드
-Write-Host "[3/4] FastAPI 백엔드 시작 (port 8000)..." -ForegroundColor Yellow
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location '$proj'; & '$proj\venv\Scripts\uvicorn.exe' app.main:app --host 127.0.0.1 --port 8000 --reload"
+# 2. FastAPI backend
+Write-Host "[2/3] Starting FastAPI on port 8000..." -ForegroundColor Yellow
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location '$proj'; `$env:BENEPICK_CHROMA_PATH='$chromaPath'; `$env:BENEPICK_ENABLE_RERANKER='0'; `$env:BENEPICK_ENABLE_RAG_WARMUP='1'; `$env:RAG_TIMEOUT_SECONDS='30'; `$env:RAG_COLD_START_TIMEOUT_SECONDS='75'; `$env:RAG_COLD_START_GRACE_SECONDS='180'; `$env:RAG_COOLDOWN_SECONDS='15'; & '$python' -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload"
 Start-Sleep -Seconds 2
 
-# 4. Next.js 프론트엔드
-Write-Host "[4/4] Next.js 프론트엔드 시작 (port 3000)..." -ForegroundColor Yellow
+# 3. Next.js frontend
+Write-Host "[3/3] Starting Next.js on port 3000..." -ForegroundColor Yellow
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location '$proj\frontend'; npm run dev"
 
 Write-Host ""
-Write-Host "모든 서버 시작 완료!" -ForegroundColor Green
-Write-Host "접속 주소: http://localhost:3000" -ForegroundColor Cyan
+Write-Host "All services started." -ForegroundColor Green
+Write-Host "Open: http://localhost:3000" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "종료하려면 각 PowerShell 창을 닫으세요." -ForegroundColor Gray
+Write-Host "To stop, close each PowerShell window." -ForegroundColor Gray
