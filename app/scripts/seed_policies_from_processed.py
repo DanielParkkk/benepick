@@ -95,6 +95,8 @@ TAG_LABELS = {
     "OWNER_FAMILY_HOME": "자가/가족주택",
 }
 
+MAX_INTEGER_VALUE = 2_147_483_647
+
 
 @dataclass(frozen=True)
 class SourceConfig:
@@ -308,7 +310,8 @@ def extract_amount_value(text: str | None) -> int | None:
     for match in re.finditer(r"(\d{4,})\s*원", normalized):
         amounts.append(int(match.group(1)))
 
-    return max(amounts) if amounts else None
+    valid_amounts = [amount for amount in amounts if 0 < amount <= MAX_INTEGER_VALUE]
+    return max(valid_amounts) if valid_amounts else None
 
 
 def infer_period_type(text: str | None) -> str:
@@ -597,9 +600,13 @@ def seed_database(args: argparse.Namespace, df: pd.DataFrame) -> None:
     db = SessionLocal()
     try:
         existing_count = db.execute(select(func.count()).select_from(PolicyMaster)).scalar_one()
-        if args.skip_if_populated and existing_count:
+        if args.skip_if_populated and existing_count >= len(df):
             print(f"[seed] skipped: policy_master already has {existing_count} rows")
             return
+        if args.skip_if_populated and existing_count:
+            print(
+                f"[seed] continuing partial seed: policy_master has {existing_count}/{len(df)} rows"
+            )
 
         if args.clear_existing:
             print("[seed] clearing normalized policy tables")
