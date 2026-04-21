@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
@@ -55,6 +58,68 @@ except Exception:  # pragma: no cover - optional AI module
 
 
 router = APIRouter(prefix="/api/v1")
+logger = logging.getLogger(__name__)
+
+
+def build_rag_fallback_policy(reference_id: str, *, index: int) -> PolicySummary:
+    score = max(65, 86 - ((index - 1) * 4))
+    return build_policy_summary(
+        policy_id=reference_id or f"rag-fallback-{index}",
+        title=f"RAG recommended policy #{index}",
+        description="The relational policy database is unavailable, so this item is based on RAG retrieval.",
+        match_score=score,
+        apply_status=ApplyStatus.NEEDS_CHECK,
+        benefit_amount=None,
+        benefit_amount_label="Check official notice",
+        benefit_summary="RAG fallback recommendation",
+        badge_items=["RAG", "fallback"],
+        sort_order=index,
+    )
+
+
+def build_rag_only_analysis_response(
+    request: AnalyzeRequest,
+    *,
+    rag_answer: str | None,
+    docs_used: list[str],
+    db_error: Exception | None = None,
+) -> SuccessResponse[AnalyzeResponseData]:
+    if db_error is not None:
+        logger.warning("DB-backed analysis failed; returning RAG-only fallback: %s", db_error)
+
+    policies = [
+        build_rag_fallback_policy(reference_id, index=index)
+        for index, reference_id in enumerate(docs_used[:5], start=1)
+    ]
+    if not policies:
+        policies = [
+            build_policy_summary(
+                policy_id="rag-fallback-1",
+                title="Policy recommendation is temporarily limited",
+                description="The service is online, but policy DB lookup returned no candidates.",
+                match_score=70,
+                apply_status=ApplyStatus.NEEDS_CHECK,
+                benefit_amount=None,
+                benefit_amount_label="Check official notice",
+                benefit_summary="Temporary fallback recommendation",
+                badge_items=["fallback"],
+                sort_order=1,
+            )
+        ]
+
+    analysis_score = round(sum(item.match_score for item in policies) / max(1, len(policies)))
+    return SuccessResponse(
+        data=AnalyzeResponseData(
+            profile_summary=ProfileSummary(analysis_score=analysis_score, tags=get_profile_tags(request)),
+            policies=policies,
+            rag_answer=rag_answer or "RAG fallback response is being used because the policy database is temporarily unavailable.",
+            rag_docs_used=docs_used,
+            unmatched_policies=[
+                UnmatchedPolicyItem(reference_id=reference_id, source=infer_source_from_reference(reference_id))
+                for reference_id in docs_used[:5]
+            ],
+        )
+    )
 
 
 def load_policy_links(db: Session, policy_id: str) -> list[PolicyLinkItem]:
@@ -543,24 +608,33 @@ def analyze(request: AnalyzeRequest, db: Session = Depends(get_db)):
         lang_code="ko",
     )
 
-    rag_policies, rag_analyzed, unmatched = resolve_rag_references(
-        db,
-        rag_result.docs_used,
-        request=request,
-        rag_answer=rag_result.answer,
-    )
-    if rag_analyzed:
-        analyzed_items = rag_analyzed
-        policies = rag_policies[:5]
-    else:
-        analyzed_items = analyze_policies(db, request)
-        policies = [
-            build_summary_from_analyzed(item, index=index)
-            for index, item in enumerate(analyzed_items[:5], start=1)
-        ]
-        unmatched = []
+    try:
+        rag_policies, rag_analyzed, unmatched = resolve_rag_references(
+            db,
+            rag_result.docs_used,
+            request=request,
+            rag_answer=rag_result.answer,
+        )
+        if rag_analyzed:
+            analyzed_items = rag_analyzed
+            policies = rag_policies[:5]
+        else:
+            analyzed_items = analyze_policies(db, request)
+            policies = [
+                build_summary_from_analyzed(item, index=index)
+                for index, item in enumerate(analyzed_items[:5], start=1)
+            ]
+            unmatched = []
 
-    persist_analysis_state(db, request, analyzed_items)
+        persist_analysis_state(db, request, analyzed_items)
+    except SQLAlchemyError as exc:
+        db.rollback()
+        return build_rag_only_analysis_response(
+            request,
+            rag_answer=rag_result.answer,
+            docs_used=rag_result.docs_used,
+            db_error=exc,
+        )
 
     analysis_score = round(sum(item.match_score for item in policies) / max(1, len(policies)))
     rag_answer_text = rag_result.answer
@@ -587,10 +661,22 @@ def search_policies(
 ):
     keyword = q.strip()
     rag_result = search_rag(query=keyword, user_condition={}, lang_code=lang)
-    items, _, unmatched = resolve_rag_references(db, rag_result.docs_used[:size])
-    if not items:
-        items = search_policy_summaries(db, keyword, size)
-        unmatched = []
+    try:
+        items, _, unmatched = resolve_rag_references(db, rag_result.docs_used[:size])
+        if not items:
+            items = search_policy_summaries(db, keyword, size)
+            unmatched = []
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.warning("DB-backed search failed; returning RAG-only fallback: %s", exc)
+        items = [
+            build_rag_fallback_policy(reference_id, index=index)
+            for index, reference_id in enumerate(rag_result.docs_used[:size], start=1)
+        ]
+        unmatched = [
+            UnmatchedPolicyItem(reference_id=reference_id, source=infer_source_from_reference(reference_id))
+            for reference_id in rag_result.docs_used[:size]
+        ]
 
     rag_answer_text = rag_result.answer
     if (not rag_answer_text) and rag_result.docs_used:
