@@ -53,7 +53,7 @@ app.add_middleware(
         "https://benepick.up.railway.app",
         "https://benepick-frontend.up.railway.app",
     ],
-    allow_origin_regex=r"https://.*\.railway\.app",
+    allow_origin_regex=r"https://.*\.(railway\.app|up\.railway\.app|vercel\.app)",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
