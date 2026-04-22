@@ -41,6 +41,8 @@ COLLECTION_NAME = "benepick_policies"
 MODEL_NAME = "BAAI/bge-m3"
 CHROMA_HOST = os.environ.get("CHROMA_HOST", "localhost")
 CHROMA_PORT = int(os.environ.get("CHROMA_PORT", "8001"))
+WELFARE_EMBEDDINGS_PATH = PROCESSED_PATH / "embeddings.npy"
+GOV24_EMBEDDINGS_PATH = PROCESSED_PATH / "gov24" / "embeddings.npy"
 
 # KIWI_MODEL_PATH: 한글 경로에서 C 확장이 모델을 못 여는 문제 우회 (Windows 로컬 전용)
 # Railway/Linux 등 배포 환경에서는 환경변수 미설정 → kiwipiepy 기본 경로 자동 사용
@@ -115,6 +117,7 @@ class HybridSearcher:
             client = chromadb.PersistentClient(path=str(CHROMA_PATH))
             print(f"Chroma 연결: Persistent ({CHROMA_PATH})")
         self.collection = client.get_collection(COLLECTION_NAME)
+        self._chroma_vector_disabled = False
 
         # 정책 데이터 로드 (복지로 + 정부24)
         df_welfare = pd.read_csv(PROCESSED_PATH / "chunks.csv")
@@ -125,6 +128,7 @@ class HybridSearcher:
         self.df_chunks = self.df_chunks.set_index("chunk_id", drop=False)
         self.chunk_ids = self.df_chunks["chunk_id"].tolist()
         print(f"전체 정책 로드: {len(self.df_chunks)}개")
+        self._load_dense_embeddings()
 
         # BGE-M3 모델 로드
         print("BGE-M3 모델 로딩 중...")
@@ -167,23 +171,68 @@ class HybridSearcher:
 
         print("초기화 완료!\n")
 
+    def _load_dense_embeddings(self) -> None:
+        """Dense fallback용 사전 계산 임베딩 로드 (Chroma 쿼리 실패 대비)."""
+        welfare_embeddings = np.load(WELFARE_EMBEDDINGS_PATH).astype(np.float32, copy=False)
+        gov24_embeddings = np.load(GOV24_EMBEDDINGS_PATH).astype(np.float32, copy=False)
+        dense_embeddings = np.vstack([welfare_embeddings, gov24_embeddings]).astype(np.float32, copy=False)
+        if dense_embeddings.shape[0] != len(self.chunk_ids):
+            raise ValueError(
+                f"임베딩 개수 불일치: embeddings={dense_embeddings.shape[0]}, chunks={len(self.chunk_ids)}"
+            )
+
+        # cosine 유사도 계산용 정규화
+        norms = np.linalg.norm(dense_embeddings, axis=1, keepdims=True)
+        norms[norms == 0] = 1e-12
+        self.dense_embeddings = dense_embeddings / norms
+        self.chunk_ids_array = np.array(self.chunk_ids, dtype=object)
+
+    def _vector_search_numpy(self, query_embedding: np.ndarray, top_k: int) -> dict:
+        """Chroma 쿼리 실패 시 numpy 기반 dense 검색 fallback."""
+        if query_embedding.ndim == 2:
+            query_embedding = query_embedding[0]
+        query_embedding = query_embedding.astype(np.float32, copy=False)
+        norm = np.linalg.norm(query_embedding)
+        if norm == 0:
+            return {}
+        query_embedding = query_embedding / norm
+
+        similarities = self.dense_embeddings @ query_embedding
+        k = min(max(top_k, 1), len(similarities))
+        if k <= 0:
+            return {}
+
+        top_indices = np.argpartition(similarities, -k)[-k:]
+        ordered_indices = top_indices[np.argsort(similarities[top_indices])[::-1]]
+        return {
+            str(self.chunk_ids_array[idx]): float(similarities[idx])
+            for idx in ordered_indices
+        }
+
     def vector_search(self, query: str, top_k: int = 10) -> dict:
         """벡터 유사도 검색"""
         query_embedding = self.model.encode(
             [query],
             normalize_embeddings=True
-        ).tolist()
-
-        results = self.collection.query(
-            query_embeddings=query_embedding,
-            n_results=top_k
         )
 
-        # chunk_id → 점수 딕셔너리 (거리 → 유사도)
-        return {
-            chunk_id: 1 - dist
-            for chunk_id, dist in zip(results["ids"][0], results["distances"][0])
-        }
+        if not self._chroma_vector_disabled:
+            try:
+                results = self.collection.query(
+                    query_embeddings=query_embedding.tolist(),
+                    n_results=top_k
+                )
+                # chunk_id → 점수 딕셔너리 (거리 → 유사도)
+                return {
+                    chunk_id: 1 - dist
+                    for chunk_id, dist in zip(results["ids"][0], results["distances"][0])
+                }
+            except Exception as exc:
+                self._chroma_vector_disabled = True
+                print(f"[Searcher] Chroma vector query failed: {exc}")
+                print("[Searcher] Switching dense retrieval to numpy fallback.")
+
+        return self._vector_search_numpy(query_embedding, top_k=top_k)
 
     def bm25_search(self, query: str) -> dict:
         """BM25 키워드 검색 (Kiwi 형태소 분석기)"""
