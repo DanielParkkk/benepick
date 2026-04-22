@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title data-i18n="logo_name">베네픽 v2.0 — 대시보드</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- AI LOADING OVERLAY -->
+<div class="ai-loading" id="aiLoading">
+  <div class="ai-loading-card">
+    <div class="ai-spinner"></div>
+    <div class="ai-loading-text">
+      <h3 data-i18n="ai_loading_title">AI 분석 중입니다...</h3>
+      <p>입력하신 조건으로<br>수급 가능성을 계산하고 있어요</p>
+      <br>
+      <div class="ai-dots">
+        <span></span><span></span><span></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ONBOARDING GUIDE POPUP -->
+<div class="onboarding-overlay" id="onboardingGuide" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+  <div class="onboarding-modal">
+    <div class="onboarding-header">
+      <div class="onboarding-logo-row">
+        <div class="logo-mark" style="width:36px;height:36px;font-size:16px;">B</div>
+        <span style="font-size:18px;font-weight:800;color:var(--gray-900);" data-i18n="guide_modal_brand">베네픽</span>
+      </div>
+      <button class="onboarding-close-x" onclick="closeOnboarding()" aria-label="닫기">✕</button>
+    </div>
+    <div class="onboarding-body">
+      <h2 id="onboarding-title" data-i18n="guide_title">처음 오셨나요? 👋</h2>
+      <p class="onboarding-subtitle" data-i18n="guide_subtitle">베네픽은 AI로 나에게 맞는 복지 혜택을 분석해드려요.</p>
+      <div class="onboarding-steps">
+        <div class="onboarding-step">
+          <div class="onboarding-step-num">1</div>
+          <div class="onboarding-step-body">
+            <h4 data-i18n="guide_step1_title">🤖 AI 수급 확률 분석</h4>
+            <p data-i18n="guide_step1_desc">나이·소득·가구 형태를 입력하면 AI가 수급 가능한 정책과 확률을 자동 계산해요.</p>
+          </div>
+        </div>
+        <div class="onboarding-step">
+          <div class="onboarding-step-num">2</div>
+          <div class="onboarding-step-body">
+            <h4 data-i18n="guide_step2_title">💼 맞춤 포트폴리오 구성</h4>
+            <p data-i18n="guide_step2_desc">중복 없이 최대 혜택을 받을 수 있는 정책 조합을 포트폴리오로 정리해 드려요.</p>
+          </div>
+        </div>
+        <div class="onboarding-step">
+          <div class="onboarding-step-num">3</div>
+          <div class="onboarding-step-body">
+            <h4 data-i18n="guide_step3_title">📋 서류 준비 &amp; 신청 보조</h4>
+            <p data-i18n="guide_step3_desc">필요한 서류 목록과 신청 방법을 단계별로 안내해 드려요. 커뮤니티에서 후기도 확인하세요!</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="onboarding-footer">
+      <button class="onboarding-btn-primary" onclick="closeOnboarding()">
+        <span data-i18n="guide_btn_start">🚀 베네픽 시작하기</span>
+      </button>
+      <button class="onboarding-btn-skip" onclick="closeOnboardingForever()">
+        <span data-i18n="guide_btn_skip">다시 보지 않기</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- NAV -->
+<nav>
+  <a href="index.html" class="nav-logo">
+    <div class="logo-mark">B</div>
+    <div class="logo-text">
+      <span class="logo-name" data-i18n="logo_name">베네픽</span>
+      <span class="logo-tag" data-i18n="logo_tag">복지 수급 확률 분석 v2.0</span>
+    </div>
+  </a>
+  <div class="nav-center">
+    <a href="index.html" class="active" data-i18n="nav_dashboard">대시보드</a>
+    <a href="search.html" data-i18n="nav_search">정책 검색</a>
+    <a href="analysis.html" data-i18n="nav_analysis">상세 분석</a>
+    <a href="portfolio.html" data-i18n="nav_portfolio">포트폴리오</a>
+    <a href="apply.html" data-i18n="nav_apply">신청 보조</a>
+    <a href="community.html" data-i18n="nav_community">커뮤니티</a>
+  </div>
+  <div class="nav-right">
+    <div id="langSelector" class="lang-selector">
+      <button id="langBtn" class="lang-btn" onclick="toggleLangDropdown()" aria-haspopup="true" aria-expanded="false">
+        <svg class="globe-svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/>
+        </svg>
+        <span class="lang-label-text" id="currentLangLabel">한국어</span>
+        <svg class="lang-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div id="langDropdown" class="lang-dropdown">
+        <div class="lang-dropdown-inner">
+          <div class="lang-option active" onclick="selectLanguage(this, '한국어')" data-lang-code="ko">
+            <span class="lang-flag">🇰🇷</span><span>한국어</span>
+            <svg class="lang-check" viewBox="0 0 13 13" fill="none"><path d="M2 6.5l3.5 3.5 5.5-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="lang-option" onclick="selectLanguage(this, 'English')" data-lang-code="en"><span class="lang-flag">🇺🇸</span><span>English</span></div>
+          <div class="lang-divider"></div>
+          <div class="lang-option" onclick="selectLanguage(this, '日本語')" data-lang-code="ja"><span class="lang-flag">🇯🇵</span><span>日本語</span></div>
+          <div class="lang-option" onclick="selectLanguage(this, '中文')" data-lang-code="zh"><span class="lang-flag">🇨🇳</span><span>中文</span></div>
+          <div class="lang-option" onclick="selectLanguage(this, 'Filipino')" data-lang-code="fil"><span class="lang-flag">🇵🇭</span><span>Filipino</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="nav-avatar">
+      <div class="avatar-circle avatar-circle--text">T</div>
+      <span class="avatar-name">테스트 유저님</span>
+      <span class="avatar-chevron">▾</span>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+
+  <div class="screen active" id="screen-dashboard">
+
+    <!-- SEARCH BAR -->
+    <div class="dash-search-bar" style="margin-bottom:24px">
+      <span class="dash-search-label" data-i18n="dash_search_label">🔍 검색</span>
+      <input id="dash-search-input"
+        placeholder="정책명, 키워드, 또는 문장으로 검색 (예: 청년 월세, 취업 후 생계 지원)"
+        data-i18n-placeholder="dash_search_placeholder"
+        onkeydown="if(event.key==='Enter') doDashSearch()">
+      <button class="btn-primary" onclick="doDashSearch()" style="flex:none;padding:10px 20px" data-i18n="dash_search_btn">검색</button>
+    </div>
+
+    <div class="grid-main">
+      <!-- LEFT COLUMN -->
+      <div>
+
+        <!-- USER PROFILE CARD -->
+        <div class="profile-card">
+          <div class="profile-header">
+            <div class="profile-user">
+              <div class="profile-avatar" id="profileAvatar">T</div>
+              <div class="profile-info">
+                <h2 id="profileName">나의 복지 분석</h2>
+                <p data-i18n="profile_updated">마지막 업데이트: 오늘 오전 9:42 · 서울특별시 마포구</p>
+              </div>
+            </div>
+            <div class="score-badge">
+              <div class="score-label" data-i18n="score_label">종합 수급 점수</div>
+              <div class="score-num">87</div>
+              <div class="score-sub">/ 100점</div>
+            </div>
+          </div>
+          <div class="profile-tags">
+            <span class="profile-tag" data-i18n="tag_age">📅 만 27세</span>
+            <span class="profile-tag" data-i18n="tag_region">📍 서울 마포구</span>
+            <span class="profile-tag" data-i18n="tag_income">💰 중위소득 52%</span>
+            <span class="profile-tag" data-i18n="tag_household">🏠 1인 가구</span>
+            <span class="profile-tag" data-i18n="tag_job">👔 미취업</span>
+            <span class="profile-tag" data-i18n="tag_edu">🎓 대졸</span>
+          </div>
+        </div>
+
+        <!-- INPUT CARD -->
+        <div class="input-card">
+          <div class="input-card-header">
+            <h3 data-i18n="input_card_title">🎯 조건 입력으로 정확도 높이기</h3>
+            <span class="ai-chip" data-i18n="ai_chip">🤖 AI 분석</span>
+          </div>
+          <div class="input-grid">
+            <div class="input-item">
+              <label data-i18n="label_age">연령</label>
+              <select id="sel-age">
+                <option>만 18세</option><option>만 19세</option><option>만 20세</option>
+                <option>만 21세</option><option>만 22세</option><option>만 23세</option>
+                <option>만 24세</option><option>만 25세</option><option>만 26세</option>
+                <option selected>만 27세</option><option>만 28세</option><option>만 29세</option>
+                <option>만 30세</option><option>만 31세</option><option>만 32세</option>
+                <option>만 33세</option><option>만 34세</option><option>만 35세</option>
+                <option>만 36세</option><option>만 37세</option><option>만 38세</option>
+                <option>만 39세</option><option>만 40세</option><option>만 41세</option>
+                <option>만 42세</option><option>만 43세</option><option>만 44세</option>
+                <option>만 45세</option><option>만 46세</option><option>만 47세</option>
+                <option>만 48세</option><option>만 49세</option><option>만 50세</option>
+                <option>만 51세</option><option>만 52세</option><option>만 53세</option>
+                <option>만 54세</option><option>만 55세</option><option>만 56세</option>
+                <option>만 57세</option><option>만 58세</option><option>만 59세</option>
+                <option>만 60세</option><option>만 61세</option><option>만 62세</option>
+                <option>만 63세</option><option>만 64세</option><option>만 65세 이상</option>
+              </select>
+            </div>
+            <div class="input-item">
+              <label data-i18n="label_region">지역</label>
+              <select id="sel-region">
+                <option>서울특별시</option>
+                <option>부산광역시</option>
+                <option>대구광역시</option>
+                <option>인천광역시</option>
+                <option>광주광역시</option>
+                <option>대전광역시</option>
+                <option>울산광역시</option>
+                <option>세종특별자치시</option>
+                <option>경기도</option>
+                <option>강원특별자치도</option>
+                <option>충청북도</option>
+                <option>충청남도</option>
+                <option>전북특별자치도</option>
+                <option>전라남도</option>
+                <option>경상북도</option>
+                <option>경상남도</option>
+                <option>제주특별자치도</option>
+              </select>
+            </div>
+            <div class="input-item">
+              <label data-i18n="label_income">소득 수준</label>
+              <select id="sel-income">
+                <option>중위소득 30% 이하</option>
+                <option>중위소득 30~40%</option>
+                <option>중위소득 40~50%</option>
+                <option selected>중위소득 50~60%</option>
+                <option>중위소득 60~70%</option>
+                <option>중위소득 70~80%</option>
+                <option>중위소득 80~90%</option>
+                <option>중위소득 90~100%</option>
+                <option>중위소득 100~120%</option>
+                <option>중위소득 120~150%</option>
+                <option>중위소득 150% 초과</option>
+              </select>
+            </div>
+            <div class="input-item">
+              <label data-i18n="label_household">가구 유형</label>
+              <select id="sel-family">
+                <option>1인 가구</option>
+                <option>2인 가구</option>
+                <option>3인 가구</option>
+                <option>4인 이상 가구</option>
+                <option>한부모 가구</option>
+                <option>다자녀 가구</option>
+                <option>다문화 가구</option>
+                <option>조손 가구</option>
+                <option>노인 단독 가구</option>
+              </select>
+            </div>
+            <div class="input-item">
+              <label data-i18n="label_job">취업 상태</label>
+              <select id="sel-employment">
+                <option selected>미취업</option>
+                <option>취업자 (정규직)</option>
+                <option>취업자 (비정규직/계약직)</option>
+                <option>자영업자</option>
+                <option>구직자 (실업)</option>
+                <option>학생</option>
+                <option>육아휴직 중</option>
+                <option>무직</option>
+              </select>
+            </div>
+            <div class="input-item">
+              <label data-i18n="label_disability">장애 여부</label>
+              <select id="sel-disability">
+                <option selected>없음</option>
+                <option>장애 1~3급 (심한 장애)</option>
+                <option>장애 4~6급 (심하지 않은 장애)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- INTENT TAG SELECTOR -->
+          <div class="intent-section">
+            <div class="intent-label" data-i18n="intent_label">💡 어떤 도움이 가장 필요하신가요?
+              <span class="intent-hint" data-i18n="intent_hint">(최대 2개 선택 · 선택 시 AI 추천 우선순위가 달라집니다)</span>
+            </div>
+            <div class="intent-tags" id="intentTags">
+              <button class="intent-tag" data-intent="주거" onclick="toggleIntent(this)" data-i18n="intent_housing">🏠 주거 지원</button>
+              <button class="intent-tag" data-intent="고용" onclick="toggleIntent(this)" data-i18n="intent_job">💼 일자리/취업</button>
+              <button class="intent-tag" data-intent="보건" onclick="toggleIntent(this)" data-i18n="intent_health">🏥 의료/건강</button>
+              <button class="intent-tag" data-intent="금융" onclick="toggleIntent(this)" data-i18n="intent_finance">💵 금융/자산형성</button>
+              <button class="intent-tag" data-intent="교육" onclick="toggleIntent(this)" data-i18n="intent_edu">🎓 교육/훈련</button>
+              <button class="intent-tag" data-intent="기초생활" onclick="toggleIntent(this)" data-i18n="intent_basic">🛡️ 기초생활</button>
+              <button class="intent-tag" data-intent="가족" onclick="toggleIntent(this)" data-i18n="intent_family">👨‍👩‍👧 가족/육아</button>
+              <button class="intent-tag" data-intent="창업" onclick="toggleIntent(this)" data-i18n="intent_startup">🚀 창업 지원</button>
+            </div>
+          </div>
+
+          <button class="analyze-btn" onclick="runAnalysis()" data-i18n="btn_analyze_main">
+            🔍 수급 가능성 AI 분석 시작하기
+          </button>
+        </div>
+
+        <!-- POLICY SCORING LIST -->
+        <div>
+          <div class="section-title">
+            <h3>
+              <span data-i18n="scoring_title">📈 수급 가능성 스코어링</span>
+              <span style="font-size:13px;font-weight:500;color:var(--gray-500)" data-i18n="scoring_order">(높은 순)</span>
+            </h3>
+          </div>
+
+          <div class="policy-list">
+
+            <!-- Policy 1 - 92% -->
+            <div class="policy-card top" onclick="showDetail('청년-월세-한시-특별지원')">
+              <button class="scrap-btn" onclick="handleScrapToggle(event, '청년-월세-한시-특별지원')" title="스크랩 저장" aria-label="스크랩 저장">☆</button>
+              <div class="policy-top-row">
+                <div class="policy-left">
+                  <div class="policy-icon green">🏠</div>
+                  <div class="policy-meta">
+                    <h4 data-i18n="pc1_name">청년 월세 한시 특별지원</h4>
+                    <p data-i18n="pc1_desc">만 19~34세 · 월세 60만원 이하 · 독립 거주 청년</p>
+                    <div class="policy-badges">
+                      <span class="badge badge-green" data-i18n="badge_met">✅ 조건 충족</span>
+                      <span class="badge badge-blue">Gov24</span>
+                      <span class="badge badge-gray" data-i18n="pc1_max">월 최대 20만원</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="policy-percent">
+                  <div class="percent-num high">92<span style="font-size:18px">%</span></div>
+                  <div class="percent-label" data-i18n="prob_label">수급 확률</div>
+                </div>
+              </div>
+              <div class="progress-row">
+                <div class="progress-track">
+                  <div class="progress-fill green" style="width:92%"></div>
+                </div>
+                <div class="benefit-chip" data-i18n="pc1_annual">연 240만원</div>
+              </div>
+              <div class="policy-action" data-i18n="detail_btn">상세 분석 보기 →</div>
+            </div>
+
+            <!-- Policy 2 - 85% -->
+            <div class="policy-card top" onclick="showDetail('국민내일배움카드')">
+              <button class="scrap-btn" onclick="handleScrapToggle(event, '국민내일배움카드')" title="스크랩 저장" aria-label="스크랩 저장">☆</button>
+              <div class="policy-top-row">
+                <div class="policy-left">
+                  <div class="policy-icon green">📚</div>
+                  <div class="policy-meta">
+                    <h4 data-i18n="pc2_name">국민내일배움카드</h4>
+                    <p data-i18n="pc2_desc">실업자 · 이직 예정자 · 단기근로자 지원 직업훈련</p>
+                    <div class="policy-badges">
+                      <span class="badge badge-green" data-i18n="badge_met">✅ 조건 충족</span>
+                      <span class="badge badge-blue" data-i18n="pc2_org">고용부</span>
+                      <span class="badge badge-gray" data-i18n="pc2_max">최대 500만원</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="policy-percent">
+                  <div class="percent-num high">85<span style="font-size:18px">%</span></div>
+                  <div class="percent-label" data-i18n="prob_label">수급 확률</div>
+                </div>
+              </div>
+              <div class="progress-row">
+                <div class="progress-track">
+                  <div class="progress-fill green" style="width:85%"></div>
+                </div>
+                <div class="benefit-chip" data-i18n="pc2_benefit">최대 500만원</div>
+              </div>
+              <div class="policy-action" data-i18n="detail_btn">상세 분석 보기 →</div>
+            </div>
+
+            <!-- INLINE AD -->
+            <div class="inline-ad">
+              <div class="inline-ad-icon">🏦</div>
+              <div class="inline-ad-text">
+                <span class="ad-badge">AD</span>
+                <h5 data-i18n="ad1_name">카카오뱅크 청년 전세 대출</h5>
+                <p data-i18n="ad1_desc">연 2.1%부터 · 최대 2억원 · 5분 비대면 신청</p>
+              </div>
+              <div class="inline-ad-arrow">›</div>
+            </div>
+
+            <!-- Policy 3 - 78% -->
+            <div class="policy-card mid" onclick="showDetail('청년-취업성공패키지')">
+              <button class="scrap-btn" onclick="handleScrapToggle(event, '청년-취업성공패키지')" title="스크랩 저장" aria-label="스크랩 저장">☆</button>
+              <div class="policy-top-row">
+                <div class="policy-left">
+                  <div class="policy-icon blue">💼</div>
+                  <div class="policy-meta">
+                    <h4 data-i18n="pc3_name">청년도약계좌</h4>
+                    <p data-i18n="pc3_desc">만 19~34세 · 개인소득 6,000만원 이하 · 5년 적립</p>
+                    <div class="policy-badges">
+                      <span class="badge badge-blue" data-i18n="badge_confirm">⚡ 확인 필요</span>
+                      <span class="badge badge-blue" data-i18n="pc3_org">금융위</span>
+                      <span class="badge badge-gray" data-i18n="pc3_max">최대 5,000만원</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="policy-percent">
+                  <div class="percent-num mid">78<span style="font-size:18px">%</span></div>
+                  <div class="percent-label" data-i18n="prob_label">수급 확률</div>
+                </div>
+              </div>
+              <div class="progress-row">
+                <div class="progress-track">
+                  <div class="progress-fill blue" style="width:78%"></div>
+                </div>
+                <div class="benefit-chip" data-i18n="pc3_benefit">정부기여금 포함</div>
+              </div>
+              <div class="policy-action" data-i18n="detail_btn">상세 분석 보기 →</div>
+            </div>
+
+            <!-- Policy 4 - 74% -->
+            <div class="policy-card mid" onclick="showDetail('청년-마음건강-지원사업')">
+              <button class="scrap-btn" onclick="handleScrapToggle(event, '청년-마음건강-지원사업')" title="스크랩 저장" aria-label="스크랩 저장">☆</button>
+              <div class="policy-top-row">
+                <div class="policy-left">
+                  <div class="policy-icon blue">🏥</div>
+                  <div class="policy-meta">
+                    <h4 data-i18n="pc4_name">청년 마음건강 지원사업</h4>
+                    <p data-i18n="pc4_desc">만 19~34세 · 심리상담 바우처 · 연간 10회</p>
+                    <div class="policy-badges">
+                      <span class="badge badge-green" data-i18n="badge_met">✅ 조건 충족</span>
+                      <span class="badge badge-gray" data-i18n="pc4_org">복지부</span>
+                      <span class="badge badge-gray" data-i18n="pc4_max">10회 무료</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="policy-percent">
+                  <div class="percent-num mid">74<span style="font-size:18px">%</span></div>
+                  <div class="percent-label" data-i18n="prob_label">수급 확률</div>
+                </div>
+              </div>
+              <div class="progress-row">
+                <div class="progress-track">
+                  <div class="progress-fill blue" style="width:74%"></div>
+                </div>
+                <div class="benefit-chip" data-i18n="pc4_benefit">연 80만원 상당</div>
+              </div>
+              <div class="policy-action" data-i18n="detail_btn">상세 분석 보기 →</div>
+            </div>
+
+            <!-- Policy 5 - 41% -->
+            <div class="policy-card low" onclick="showDetail('청년창업사관학교')">
+              <button class="scrap-btn" onclick="handleScrapToggle(event, '청년창업사관학교')" title="스크랩 저장" aria-label="스크랩 저장">☆</button>
+              <div class="policy-top-row">
+                <div class="policy-left">
+                  <div class="policy-icon orange">🚀</div>
+                  <div class="policy-meta">
+                    <h4 data-i18n="pc5_name">청년창업사관학교</h4>
+                    <p data-i18n="pc5_desc">만 39세 이하 · 창업 아이템 보유 · 사업계획서 필요</p>
+                    <div class="policy-badges">
+                      <span class="badge badge-orange" data-i18n="badge_lack">⚠️ 조건 부족</span>
+                      <span class="badge badge-gray" data-i18n="pc5_org">중기부</span>
+                      <span class="badge badge-gray" data-i18n="pc5_max">최대 1억원</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="policy-percent">
+                  <div class="percent-num low">41<span style="font-size:18px">%</span></div>
+                  <div class="percent-label" data-i18n="prob_label">수급 확률</div>
+                </div>
+              </div>
+              <div class="progress-row">
+                <div class="progress-track">
+                  <div class="progress-fill orange" style="width:41%"></div>
+                </div>
+                <div class="benefit-chip" data-i18n="pc5_benefit">최대 1억원</div>
+              </div>
+              <div class="policy-action" data-i18n="detail_btn">상세 분석 보기 →</div>
+            </div>
+
+          </div><!-- /.policy-list -->
+        </div>
+
+        <!-- INLINE SEARCH RESULTS -->
+        <div id="dash-search-results-wrap">
+          <div class="dash-search-results-header">
+            <h3 data-i18n="search_results_title">🔎 검색 결과</h3>
+            <button class="dash-search-close-btn" onclick="closeDashSearch()" data-i18n="search_close">✕ 닫기</button>
+          </div>
+          <div id="dash-search-status"></div>
+          <div id="dash-search-results"></div>
+        </div>
+
+      </div><!-- /left column -->
+
+      <!-- RIGHT SIDEBAR -->
+      <div class="sidebar">
+
+        <!-- Summary stats -->
+        <div class="sidebar-card">
+          <h4 data-i18n="sidebar_status_title">📊 나의 수급 현황</h4>
+          <div class="stat-grid">
+            <div class="stat-item">
+              <div class="val green">12</div>
+              <div class="lbl" data-i18n="stat_policy_count">해당 정책 수</div>
+            </div>
+            <div class="stat-item">
+              <div class="val blue">87%</div>
+              <div class="lbl" data-i18n="stat_avg_prob">평균 확률</div>
+            </div>
+            <div class="stat-item">
+              <div class="val green">1,040<span style="font-size:14px">만</span></div>
+              <div class="lbl" data-i18n="stat_benefit">예상 수혜액</div>
+            </div>
+            <div class="stat-item">
+              <div class="val blue">3</div>
+              <div class="lbl" data-i18n="stat_immediate">즉시 신청 가능</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Insight Widget -->
+        <div class="insight-widget">
+          <div class="insight-widget-header">
+            <div class="insight-widget-title">📊 커뮤니티 인사이트</div>
+            <button class="insight-refresh-btn" onclick="insightRefresh()">↻ 새로고침</button>
+          </div>
+          <div class="insight-section-label">이번 주 수급 확률 TOP 3</div>
+          <div class="insight-policy-row">
+            <div class="insight-policy-meta">
+              <span class="insight-policy-name">🏠 청년 월세 지원</span>
+              <span class="insight-policy-pct">92%</span>
+            </div>
+            <div class="insight-bar-track">
+              <div class="insight-bar-fill" id="iBar1" style="width:0%"></div>
+            </div>
+          </div>
+          <div class="insight-policy-row">
+            <div class="insight-policy-meta">
+              <span class="insight-policy-name">📚 내일배움카드</span>
+              <span class="insight-policy-pct">85%</span>
+            </div>
+            <div class="insight-bar-track">
+              <div class="insight-bar-fill" id="iBar2" style="width:0%"></div>
+            </div>
+          </div>
+          <div class="insight-policy-row">
+            <div class="insight-policy-meta">
+              <span class="insight-policy-name">🏥 마음건강 지원</span>
+              <span class="insight-policy-pct">74%</span>
+            </div>
+            <div class="insight-bar-track">
+              <div class="insight-bar-fill" id="iBar3" style="width:0%"></div>
+            </div>
+          </div>
+          <hr class="insight-divider">
+          <div class="insight-review-header">
+            <span class="insight-review-label">💬 최근 후기 <span class="insight-badge-positive">긍정적</span></span>
+          </div>
+          <div id="iReviewList"></div>
+          <div class="insight-nav-dots" id="iNavDots"></div>
+          <div class="insight-stats-row">
+            <div class="insight-stat-chip">
+              <div class="val" id="iStatPosts">0</div>
+              <div class="lbl">게시글</div>
+            </div>
+            <div class="insight-stat-chip">
+              <div class="val" id="iStatLikes">0</div>
+              <div class="lbl">공감수</div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /sidebar -->
+    </div><!-- /grid-main -->
+  </div><!-- /screen-dashboard -->
+
+</div><!-- /container -->
+
+<script src="main.js"></script>
+<script src="i18n.js"></script>
+</body>
+</html>

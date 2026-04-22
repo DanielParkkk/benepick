@@ -1,0 +1,903 @@
+﻿<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>베네픽 v2.0 — 개인정보 수정</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+
+/* ── Toast Notification ── */
+.profile-toast {
+  position: fixed;
+  top: 80px;
+  right: 32px;
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-left: 4px solid var(--green);
+  border-radius: 12px;
+  padding: 14px 18px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.12);
+  z-index: 9999;
+  opacity: 0;
+  transform: translateX(60px);
+  transition: opacity 0.25s, transform 0.3s cubic-bezier(.34,1.56,.64,1);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 240px;
+}
+.profile-toast.show {
+  opacity: 1;
+  transform: translateX(0);
+}
+.profile-toast .toast-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.profile-toast .toast-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-900);
+}
+.profile-toast .toast-sub {
+  font-size: 12px;
+  color: var(--gray-500);
+  margin-top: 2px;
+}
+
+/* ── Page Layout ── */
+.profile-page {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.profile-page-header {
+  margin-bottom: 28px;
+}
+.profile-page-header h2 {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--gray-900);
+  margin-bottom: 6px;
+}
+.profile-page-header p {
+  font-size: 14px;
+  color: var(--gray-500);
+}
+
+/* ── Avatar Section ── */
+.profile-avatar-section {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  padding: 24px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.avatar-wrapper {
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.avatar-main {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--blue), var(--green));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 32px;
+  font-weight: 800;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(74,144,226,.35);
+  transition: all 0.2s;
+}
+
+.avatar-wrapper:hover .avatar-main {
+  box-shadow: 0 6px 20px rgba(74,144,226,.45);
+  transform: scale(1.04);
+}
+
+.avatar-edit-overlay {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 26px;
+  height: 26px;
+  background: var(--blue);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,.15);
+  border: 2px solid white;
+  transition: background 0.15s;
+}
+.avatar-wrapper:hover .avatar-edit-overlay { background: var(--blue-dark); }
+.avatar-edit-overlay .material-symbols-rounded {
+  font-size: 14px;
+  color: #fff;
+  font-variation-settings: 'FILL' 1, 'wght' 600;
+}
+
+.avatar-info h3 {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--gray-900);
+  margin-bottom: 4px;
+}
+.avatar-info p {
+  font-size: 13px;
+  color: var(--gray-500);
+  margin-bottom: 12px;
+}
+.avatar-change-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--gray-100);
+  border: 1.5px solid var(--gray-200);
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-700);
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: 'Pretendard', sans-serif;
+}
+.avatar-change-btn:hover { background: var(--gray-200); border-color: var(--gray-300); }
+
+/* ── Form Section ── */
+.profile-section {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  padding: 24px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.profile-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--gray-900);
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--gray-100);
+}
+
+/* ── Field Group ── */
+.field-group {
+  margin-bottom: 18px;
+}
+
+.field-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gray-700);
+  margin-bottom: 7px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.field-label .tooltip-trigger {
+  position: relative;
+  display: inline-flex;
+  cursor: help;
+}
+.field-label .tooltip-trigger .material-symbols-rounded {
+  font-size: 15px;
+  color: var(--gray-300);
+  font-variation-settings: 'FILL' 0, 'wght' 400;
+}
+.field-label .tooltip-trigger:hover .material-symbols-rounded { color: var(--blue); }
+
+/* Tooltip */
+.tooltip-box {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--gray-900);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 8px 12px;
+  border-radius: 8px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+  text-transform: none;
+  letter-spacing: 0;
+  z-index: 100;
+  line-height: 1.5;
+  text-align: center;
+  min-width: 160px;
+}
+.tooltip-box::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--gray-900);
+}
+.tooltip-trigger:hover .tooltip-box { opacity: 1; }
+
+/* ── Input States ── */
+.field-input-wrap {
+  position: relative;
+}
+
+.field-input {
+  width: 100%;
+  border: 1.5px solid var(--gray-200);
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-family: 'Pretendard', sans-serif;
+  color: var(--gray-900);
+  outline: none;
+  transition: all 0.15s;
+  background: var(--gray-50);
+}
+
+/* Read-only state */
+.field-input.readonly {
+  background: var(--gray-50);
+  color: var(--gray-700);
+  border-color: var(--gray-200);
+  cursor: default;
+}
+
+/* Active / editable state */
+.field-input:not(.readonly):focus {
+  border-color: var(--blue);
+  background: var(--white);
+  box-shadow: 0 0 0 3px rgba(74,144,226,.12);
+}
+
+.field-input:not(.readonly) {
+  background: var(--white);
+  border-color: var(--gray-300);
+}
+
+.field-input::placeholder { color: var(--gray-300); }
+
+.field-edit-icon {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.field-edit-icon .material-symbols-rounded {
+  font-size: 16px;
+  color: var(--gray-300);
+  font-variation-settings: 'FILL' 0, 'wght' 400;
+}
+
+/* ── Select ── */
+.field-select {
+  width: 100%;
+  border: 1.5px solid var(--gray-300);
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-family: 'Pretendard', sans-serif;
+  color: var(--gray-900);
+  outline: none;
+  background: var(--white);
+  cursor: pointer;
+  transition: all 0.15s;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 36px;
+}
+.field-select:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(74,144,226,.12);
+}
+
+/* ── Form Row ── */
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+/* ── Danger Zone ── */
+.danger-zone {
+  background: var(--red-light);
+  border: 1px solid rgba(231,76,60,.15);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  margin-bottom: 20px;
+}
+.danger-zone h4 { font-size: 14px; font-weight: 700; color: var(--red); margin-bottom: 4px; }
+.danger-zone p { font-size: 12px; color: #c0392b; margin-bottom: 14px; line-height: 1.6; }
+.btn-danger {
+  border: 1.5px solid var(--red);
+  background: none;
+  color: var(--red);
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: 'Pretendard', sans-serif;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-danger:hover { background: var(--red); color: #fff; }
+
+/* ── Save Button ── */
+.profile-save-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.btn-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, var(--blue), var(--blue-dark));
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 13px 28px;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: 'Pretendard', sans-serif;
+  cursor: pointer;
+  transition: all 0.15s;
+  box-shadow: 0 4px 14px rgba(74,144,226,.35);
+  min-width: 140px;
+  justify-content: center;
+}
+.btn-save:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(74,144,226,.4); }
+
+.btn-save.loading {
+  background: var(--gray-300);
+  pointer-events: none;
+}
+
+.save-spinner {
+  display: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+.btn-save.loading .save-spinner { display: block; }
+.btn-save.loading .save-text { display: none; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.btn-cancel-edit {
+  background: var(--gray-100);
+  border: 1.5px solid var(--gray-200);
+  border-radius: 12px;
+  padding: 13px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gray-700);
+  cursor: pointer;
+  font-family: 'Pretendard', sans-serif;
+  transition: all 0.15s;
+}
+.btn-cancel-edit:hover { background: var(--gray-200); }
+
+/* Avatar picker modal */
+.avatar-picker-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.4);
+  z-index: 5000;
+  align-items: center;
+  justify-content: center;
+}
+.avatar-picker-modal.open { display: flex; }
+.avatar-picker-card {
+  background: var(--white);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  width: 360px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.2);
+}
+.avatar-picker-card h3 {
+  font-size: 17px;
+  font-weight: 800;
+  margin-bottom: 6px;
+  color: var(--gray-900);
+}
+.avatar-picker-card p {
+  font-size: 13px;
+  color: var(--gray-500);
+  margin-bottom: 20px;
+}
+.avatar-options {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.avatar-opt {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  cursor: pointer;
+  border: 2.5px solid transparent;
+  transition: all 0.15s;
+}
+.avatar-opt:hover { transform: scale(1.1); border-color: var(--blue); }
+.avatar-opt.selected { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(74,144,226,.25); }
+.avatar-picker-actions { display: flex; gap: 10px; justify-content: flex-end; }
+</style>
+</head>
+<body>
+
+<!-- Toast -->
+<div class="profile-toast" id="profileToast">
+  <div class="toast-icon">✅</div>
+  <div>
+    <div class="toast-text" data-i18n="profile_toast_success">✅ 성공적으로 변경되었습니다</div>
+    <div class="toast-sub">개인정보가 업데이트되었어요</div>
+  </div>
+</div>
+
+<!-- Avatar Picker Modal -->
+<div class="avatar-picker-modal" id="avatarModal" onclick="closeAvatarModal(event)">
+  <div class="avatar-picker-card">
+    <h3 data-i18n="profile_avatar_title">Avatar Settings</h3>
+    <p data-i18n="profile_avatar_desc">Choose an avatar for your dashboard and community.</p>
+    <div class="avatar-options">
+      <div class="avatar-opt selected" style="background:linear-gradient(135deg,#4A90E2,#2ECC71);" onclick="selectAvatar(this,'테','linear-gradient(135deg,#4A90E2,#2ECC71)')">테</div>
+      <div class="avatar-opt" style="background:linear-gradient(135deg,#9B59B6,#E91E63);" onclick="selectAvatar(this,'😊','linear-gradient(135deg,#9B59B6,#E91E63)')">😊</div>
+      <div class="avatar-opt" style="background:linear-gradient(135deg,#F39C12,#E74C3C);" onclick="selectAvatar(this,'🦊','linear-gradient(135deg,#F39C12,#E74C3C)')">🦊</div>
+      <div class="avatar-opt" style="background:linear-gradient(135deg,#2ECC71,#1abc9c);" onclick="selectAvatar(this,'🐢','linear-gradient(135deg,#2ECC71,#1abc9c)')">🐢</div>
+      <div class="avatar-opt" style="background:linear-gradient(135deg,#E74C3C,#C0392B);" onclick="selectAvatar(this,'🦁','linear-gradient(135deg,#E74C3C,#C0392B)')">🦁</div>
+      <div class="avatar-opt" style="background:linear-gradient(135deg,#3498DB,#2980B9);" onclick="selectAvatar(this,'🐳','linear-gradient(135deg,#3498DB,#2980B9)')">🐳</div>
+      <div class="avatar-opt" style="background:linear-gradient(135deg,#1ABC9C,#16A085);" onclick="selectAvatar(this,'🌿','linear-gradient(135deg,#1ABC9C,#16A085)')">🌿</div>
+      <div class="avatar-opt" style="background:linear-gradient(135deg,#F1C40F,#E67E22);" onclick="selectAvatar(this,'⭐','linear-gradient(135deg,#F1C40F,#E67E22)')">⭐</div>
+      <div class="avatar-opt" style="background:linear-gradient(135deg,#8E44AD,#6C3483);" onclick="selectAvatar(this,'🔮','linear-gradient(135deg,#8E44AD,#6C3483)')">🔮</div>
+      <div class="avatar-opt" style="background:linear-gradient(135deg,#E67E22,#D35400);" onclick="selectAvatar(this,'🔥','linear-gradient(135deg,#E67E22,#D35400)')">🔥</div>
+    </div>
+    <div class="avatar-picker-actions">
+      <button class="btn-cancel-edit" onclick="closeAvatarModalDirect()">취소</button>
+      <button class="btn-save" style="min-width:80px;padding:10px 20px;font-size:14px;" onclick="applyAvatar()">
+        <span class="save-text">적용</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- NAV -->
+<nav>
+  <a href="index.html" class="nav-logo">
+    <div class="logo-mark">B</div>
+    <div class="logo-text">
+      <span class="logo-name" data-i18n="logo_name">베네픽</span>
+      <span class="logo-tag" data-i18n="logo_tag">복지 수급 확률 분석 v2.0</span>
+    </div>
+  </a>
+  <div class="nav-center">
+    <a href="index.html" data-i18n="nav_dashboard">대시보드</a>
+    <a href="search.html" data-i18n="nav_search">정책 검색</a>
+    <a href="analysis.html" data-i18n="nav_analysis">상세 분석</a>
+    <a href="portfolio.html" data-i18n="nav_portfolio">포트폴리오</a>
+    <a href="apply.html" data-i18n="nav_apply">신청 보조</a>
+    <a href="community.html" data-i18n="nav_community">커뮤니티</a>
+  </div>
+  <div class="nav-right">
+    <div id="langSelector" class="lang-selector">
+      <button id="langBtn" class="lang-btn" onclick="toggleLangDropdown()" aria-haspopup="true" aria-expanded="false">
+        <svg class="globe-svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/>
+        </svg>
+        <span class="lang-label-text" id="currentLangLabel">한국어</span>
+        <svg class="lang-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div id="langDropdown" class="lang-dropdown">
+        <div class="lang-dropdown-inner">
+          <div class="lang-option active" onclick="selectLanguage(this, '한국어')" data-lang-code="ko">
+            <span class="lang-flag">🇰🇷</span><span>한국어</span>
+            <svg class="lang-check" viewBox="0 0 13 13" fill="none"><path d="M2 6.5l3.5 3.5 5.5-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="lang-option" onclick="selectLanguage(this, 'English')" data-lang-code="en"><span class="lang-flag">🇺🇸</span><span>English</span></div>
+          <div class="lang-divider"></div>
+          <div class="lang-option" onclick="selectLanguage(this, '日本語')" data-lang-code="ja"><span class="lang-flag">🇯🇵</span><span>日本語</span></div>
+          <div class="lang-option" onclick="selectLanguage(this, '中文')" data-lang-code="zh"><span class="lang-flag">🇨🇳</span><span>中文</span></div>
+          <div class="lang-option" onclick="selectLanguage(this, 'Filipino')" data-lang-code="fil"><span class="lang-flag">🇵🇭</span><span>Filipino</span></div>
+        </div>
+      </div>
+    </div>
+    <!-- main.js의 initAuthNav()가 이 요소를 갈아끼워 드롭다운을 생성함 -->
+    <div class="nav-avatar">
+      <div class="avatar-circle">나</div>
+      <span class="avatar-name">로딩 중...</span>
+      <span>▾</span>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="profile-page">
+
+    <!-- Header -->
+    <div class="profile-page-header">
+      <h2>👤 <span data-i18n="profile_header_title">개인정보 수정</span></h2>
+      <p data-i18n="profile_header_desc">베네픽의 맞춤 분석을 위해 정보를 최신으로 유지해주세요.</p>
+    </div>
+
+    <!-- Avatar -->
+    <div class="profile-avatar-section">
+      <div class="avatar-wrapper" onclick="openAvatarModal()">
+        <div class="avatar-main" id="mainAvatar">테</div>
+        <div class="avatar-edit-overlay">
+          <span class="material-symbols-rounded">photo_camera</span>
+        </div>
+      </div>
+      <div class="avatar-info">
+        <h3>테스트 유저님</h3>
+        <p>test@example.com · 가입일 2024.01.15</p>
+        <button class="avatar-change-btn" onclick="openAvatarModal()">
+          <span class="material-symbols-rounded" style="font-size:14px;font-variation-settings:'FILL' 0,'wght' 500;">edit</span>
+          아바타 변경하기
+        </button>
+      </div>
+    </div>
+
+    <!-- Basic Info -->
+    <div class="profile-section">
+      <div class="profile-section-title">
+        🧾 기본 정보
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <div class="field-label">이름</div>
+          <div class="field-input-wrap">
+            <input class="field-input" type="text" value="테스트 유저" placeholder="이름">
+            <div class="field-edit-icon"><span class="material-symbols-rounded">edit</span></div>
+          </div>
+        </div>
+        <div class="field-group">
+          <div class="field-label">생년월일</div>
+          <div class="field-input-wrap">
+            <input class="field-input" type="date" value="1998-05-20">
+            <div class="field-edit-icon"><span class="material-symbols-rounded">edit</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <div class="field-label">이메일</div>
+          <div class="field-input-wrap">
+            <input class="field-input readonly" type="email" value="test@example.com" readonly>
+            <div class="field-edit-icon"><span class="material-symbols-rounded" style="color:var(--gray-200)">lock</span></div>
+          </div>
+        </div>
+        <div class="field-group">
+          <div class="field-label">전화번호</div>
+          <div class="field-input-wrap">
+            <input class="field-input" type="tel" value="010-1234-5678" placeholder="전화번호">
+            <div class="field-edit-icon"><span class="material-symbols-rounded">edit</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="field-group">
+        <div class="field-label">거주지</div>
+        <div class="field-input-wrap">
+          <input class="field-input" type="text" value="서울특별시 마포구 합정동" placeholder="거주지 주소">
+          <div class="field-edit-icon"><span class="material-symbols-rounded">edit</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI Analysis Info -->
+    <div class="profile-section">
+      <div class="profile-section-title">
+        🤖 AI 분석 정보
+        <span style="font-size:11px;font-weight:500;color:var(--gray-500);margin-left:auto;">이 정보는 AI 분석 정확도에 영향을 미쳐요</span>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <div class="field-label">
+            소득 수준
+            <span class="tooltip-trigger">
+              <span class="material-symbols-rounded">info</span>
+              <div class="tooltip-box">이 정보는 수급 확률 AI 분석에만<br>활용되며 외부에 공개되지 않아요.</div>
+            </span>
+          </div>
+          <select class="field-select">
+            <option>연 2천만원 이하</option>
+            <option selected>연 2천~3천만원</option>
+            <option>연 3천~4천만원</option>
+            <option>연 4천만원 이상</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <div class="field-label">
+            가구 구성
+            <span class="tooltip-trigger">
+              <span class="material-symbols-rounded">info</span>
+              <div class="tooltip-box">가구원 수에 따라 수급 기준이<br>달라질 수 있어요.</div>
+            </span>
+          </div>
+          <select class="field-select">
+            <option selected>1인 가구</option>
+            <option>2인 가구</option>
+            <option>3인 가구</option>
+            <option>4인 이상 가구</option>
+          </select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <div class="field-label">
+            고용 상태
+            <span class="tooltip-trigger">
+              <span class="material-symbols-rounded">info</span>
+              <div class="tooltip-box">이 정보는 AI 분석에만 활용됩니다.</div>
+            </span>
+          </div>
+          <select class="field-select">
+            <option>미취업</option>
+            <option selected>취업 (직장인)</option>
+            <option>자영업</option>
+            <option>학생</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <div class="field-label">
+            주거 유형
+            <span class="tooltip-trigger">
+              <span class="material-symbols-rounded">info</span>
+              <div class="tooltip-box">이 정보는 AI 분석에만 활용됩니다.</div>
+            </span>
+          </div>
+          <select class="field-select">
+            <option selected>월세</option>
+            <option>전세</option>
+            <option>자가</option>
+            <option>기타</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Password -->
+    <div class="profile-section">
+      <div class="profile-section-title">🔒 비밀번호 변경</div>
+      <div class="field-group">
+        <div class="field-label">현재 비밀번호</div>
+        <div class="field-input-wrap">
+          <input class="field-input" type="password" placeholder="현재 비밀번호 입력">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <div class="field-label">새 비밀번호</div>
+          <div class="field-input-wrap">
+            <input class="field-input" type="password" placeholder="새 비밀번호 (8자 이상)">
+          </div>
+        </div>
+        <div class="field-group">
+          <div class="field-label">새 비밀번호 확인</div>
+          <div class="field-input-wrap">
+            <input class="field-input" type="password" placeholder="다시 입력">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notification -->
+    <div class="profile-section">
+      <div class="profile-section-title">🔔 알림 설정</div>
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;">
+          <div>
+            <div style="font-size:14px;font-weight:600;color:var(--gray-900);">신규 정책 알림</div>
+            <div style="font-size:12px;color:var(--gray-500);margin-top:2px;">내 조건에 맞는 새 정책이 등록될 때</div>
+          </div>
+          <div style="position:relative;width:46px;height:26px;flex-shrink:0;">
+            <input type="checkbox" checked id="notif1" style="display:none;" onchange="updateToggle(this)">
+            <div class="notif-track" data-for="notif1" onclick="this.previousElementSibling.previousElementSibling.click()"></div>
+          </div>
+        </label>
+        <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding-top:14px;border-top:1px solid var(--gray-100);">
+          <div>
+            <div style="font-size:14px;font-weight:600;color:var(--gray-900);">신청 마감 알림</div>
+            <div style="font-size:12px;color:var(--gray-500);margin-top:2px;">스크랩한 정책의 신청 마감 7일 전</div>
+          </div>
+          <div style="position:relative;width:46px;height:26px;flex-shrink:0;">
+            <input type="checkbox" checked id="notif2" style="display:none;">
+            <div class="notif-track on" data-for="notif2"></div>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <!-- Danger Zone -->
+    <div class="danger-zone">
+      <h4>⚠️ 계정 삭제</h4>
+      <p>계정을 삭제하면 모든 분석 데이터와 스크랩이 영구적으로 제거됩니다. 이 작업은 되돌릴 수 없습니다.</p>
+      <button class="btn-danger">계정 삭제하기</button>
+    </div>
+
+    <!-- Save Bar -->
+    <div class="profile-save-bar">
+      <button class="btn-cancel-edit" onclick="history.back()">취소</button>
+      <button class="btn-save" id="saveBtn" onclick="saveProfile()">
+        <div class="save-spinner"></div>
+        <span class="save-text" data-i18n="profile_btn_save">변경사항 저장하기</span>
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<style>
+.notif-track {
+  position: absolute;
+  inset: 0;
+  background: var(--gray-200);
+  border-radius: 13px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.notif-track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(0,0,0,.2);
+  transition: transform 0.2s;
+}
+.notif-track.on {
+  background: var(--blue);
+}
+.notif-track.on::after {
+  transform: translateX(20px);
+}
+</style>
+
+
+<script src="main.js"></script>
+<script src="i18n.js" onerror="void 0"></script>
+<script>
+// main.js 로드 완료 후 실행
+window.addEventListener('load', () => {
+  // 1. 로그인 체크: 비로그인이면 login.html으로
+  const token = localStorage.getItem('token');
+  if (!token) {
+    window.location.href = 'login.html';
+    return;
+  }
+
+  // 2. localStorage 유저 정보로 프로필 폼 초기화
+  const user = getAuthUser();
+  if (user) {
+    // 아바타 이니셜 반영
+    const mainAv = document.getElementById('mainAvatar');
+    if (mainAv) mainAv.textContent = user.initial || user.name?.[0] || '나';
+
+    // 이름/이메일 필드 반영
+    const nameInput = document.querySelector('input[placeholder="이름"]');
+    if (nameInput && user.name) nameInput.value = user.name;
+
+    const emailInput = document.querySelector('input[type="email"]');
+    if (emailInput && user.email) emailInput.value = user.email;
+
+    // 헤더 정보 반영
+    const avatarInfoH3 = document.querySelector('.avatar-info h3');
+    if (avatarInfoH3 && user.name) avatarInfoH3.textContent = user.name + '님';
+
+    const avatarInfoP = document.querySelector('.avatar-info p');
+    if (avatarInfoP && user.email) {
+      avatarInfoP.textContent = user.email + ' · 가입일 2024.01.15';
+    }
+  }
+});
+
+let pendingAvatar = null;
+function getI18nText(key, fallback) {
+  try {
+    const lang = (localStorage.getItem('benefic_lang') || 'ko');
+    if (typeof TRANSLATIONS !== 'undefined' && TRANSLATIONS[lang] && TRANSLATIONS[lang][key]) {
+      return TRANSLATIONS[lang][key];
+    }
+  } catch (e) {}
+  return fallback;
+}
+
+/* Toggle notif */
+document.querySelectorAll('.notif-track').forEach(track => {
+  track.addEventListener('click', () => {
+    track.classList.toggle('on');
+  });
+});
+
+/* Avatar Modal */
+function openAvatarModal() {
+  document.getElementById('avatarModal').classList.add('open');
+}
+function closeAvatarModal(e) {
+  if (e.target === document.getElementById('avatarModal')) closeAvatarModalDirect();
+}
+function closeAvatarModalDirect() {
+  document.getElementById('avatarModal').classList.remove('open');
+  pendingAvatar = null;
+}
+function selectAvatar(el, char, bg) {
+  document.querySelectorAll('.avatar-opt').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+  pendingAvatar = { char, bg };
+}
+function applyAvatar() {
+  if (pendingAvatar) {
+    const av = document.getElementById('mainAvatar');
+    av.textContent = pendingAvatar.char;
+    av.style.background = pendingAvatar.bg;
+  }
+  closeAvatarModalDirect();
+  showProfileToast('🎨 아바타가 변경되었습니다!');
+}
+
+/* Save */
+function saveProfile() {
+  const btn = document.getElementById('saveBtn');
+  btn.classList.add('loading');
+  setTimeout(() => {
+    btn.classList.remove('loading');
+    showProfileToast(getI18nText('profile_toast_success', '✅ 성공적으로 변경되었습니다'));
+  }, 1400);
+}
+
+// main.js의 전역 showToast와 충돌 방지: profile 전용 토스트 함수
+function showProfileToast(msg) {
+  const t = document.getElementById('profileToast');
+  t.querySelector('.toast-text').textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+</script>
+</body>
+</html>
+

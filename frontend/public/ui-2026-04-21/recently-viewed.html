@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>베네픽 v2.0 — 최근 본 공고 (데모)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+
+/* ════════════════════════════════════════
+   USER AVATAR DROPDOWN
+════════════════════════════════════════ */
+.user-dropdown-wrap {
+  position: relative;
+}
+
+.user-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 240px;
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(0,0,0,.12), 0 2px 6px rgba(0,0,0,.04);
+  z-index: 1000;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-8px) scale(0.97);
+  transform-origin: top right;
+  pointer-events: none;
+  transition: opacity 0.18s, transform 0.18s cubic-bezier(.34,1.56,.64,1);
+}
+
+.user-dropdown-menu.open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+/* Profile Header in Dropdown */
+.dropdown-profile-head {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--gray-100);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dropdown-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--blue), var(--green));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 16px;
+  font-weight: 800;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.dropdown-profile-info h4 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--gray-900);
+  margin-bottom: 2px;
+}
+
+.dropdown-profile-info p {
+  font-size: 11px;
+  color: var(--gray-500);
+}
+
+/* Menu Items */
+.dropdown-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-700);
+  cursor: pointer;
+  transition: background 0.12s;
+  text-decoration: none;
+}
+
+.dropdown-menu-item:hover { background: var(--gray-50); color: var(--gray-900); }
+
+.dropdown-menu-item .item-icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.dropdown-menu-item.danger { color: var(--red); }
+.dropdown-menu-item.danger:hover { background: var(--red-light); }
+
+.dropdown-divider {
+  height: 1px;
+  background: var(--gray-100);
+  margin: 4px 0;
+}
+
+/* ── Recently Viewed Sub-panel ── */
+.dropdown-recent-section {
+  background: var(--gray-50);
+  border-top: 1px solid var(--gray-100);
+  padding: 10px 0 6px;
+}
+
+.dropdown-recent-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--gray-500);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 0 18px 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dropdown-recent-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 18px;
+  cursor: pointer;
+  transition: background 0.12s;
+  text-decoration: none;
+}
+
+.dropdown-recent-item:hover { background: rgba(0,0,0,.03); }
+
+.dropdown-recent-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-sm);
+}
+
+.dropdown-recent-info { flex: 1; min-width: 0; }
+
+.dropdown-recent-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-900);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.dropdown-recent-meta {
+  font-size: 10px;
+  color: var(--gray-500);
+  margin-top: 1px;
+}
+
+.dropdown-recent-time {
+  font-size: 10px;
+  color: var(--gray-300);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.dropdown-recent-more {
+  display: block;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--blue);
+  padding: 8px 18px;
+  cursor: pointer;
+  transition: background 0.12s;
+  text-decoration: none;
+}
+.dropdown-recent-more:hover { background: var(--blue-light); }
+
+/* ════════════════════════════════════════
+   DETAIL PAGE — RECENTLY VIEWED HORIZONTAL SCROLL
+════════════════════════════════════════ */
+.recently-viewed-section {
+  margin-top: 40px;
+  padding-top: 28px;
+  border-top: 1px solid var(--gray-200);
+}
+
+.recently-viewed-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.recently-viewed-header h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--gray-900);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.recently-viewed-header a {
+  font-size: 12px;
+  color: var(--blue);
+  text-decoration: none;
+  font-weight: 600;
+}
+.recently-viewed-header a:hover { text-decoration: underline; }
+
+/* Horizontal Scroll Container */
+.recently-viewed-scroll-wrap {
+  position: relative;
+}
+
+.recently-viewed-scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.recently-viewed-scroll::-webkit-scrollbar { display: none; }
+
+/* Scroll Arrows */
+.scroll-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--white);
+  border: 1.5px solid var(--gray-200);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  transition: all 0.15s;
+  font-size: 14px;
+}
+.scroll-arrow:hover { background: var(--gray-100); }
+.scroll-arrow.left { left: -14px; }
+.scroll-arrow.right { right: -14px; }
+.scroll-arrow.hidden { opacity: 0; pointer-events: none; }
+
+/* Recently Viewed Mini Card */
+.rv-card {
+  min-width: 200px;
+  max-width: 200px;
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  scroll-snap-align: start;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.rv-card:hover {
+  background: var(--white);
+  border-color: var(--gray-300);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.rv-card-icon {
+  font-size: 22px;
+  margin-bottom: 8px;
+  line-height: 1;
+}
+
+.rv-card-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gray-900);
+  margin-bottom: 4px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.rv-card-amount {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--green);
+  margin-bottom: 6px;
+}
+
+.rv-card-prob {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray-500);
+  margin-bottom: 8px;
+}
+
+.rv-card-time {
+  font-size: 10px;
+  color: var(--gray-300);
+  font-weight: 500;
+}
+
+.rv-card-new-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 20px;
+  letter-spacing: 0.3px;
+}
+
+/* ════════════════════════════════════════
+   DEMO LAYOUT
+════════════════════════════════════════ */
+.demo-section {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  padding: 28px 32px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow-sm);
+}
+
+.demo-section-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gray-500);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.demo-section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--gray-100);
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a href="index.html" class="nav-logo">
+    <div class="logo-mark">B</div>
+    <div class="logo-text">
+      <span class="logo-name" data-i18n="logo_name">베네픽</span>
+      <span class="logo-tag" data-i18n="logo_tag">복지 수급 확률 분석 v2.0</span>
+    </div>
+  </a>
+  <div class="nav-center">
+    <a href="index.html" data-i18n="nav_dashboard">대시보드</a>
+    <a href="search.html" data-i18n="nav_search">정책 검색</a>
+    <a href="analysis.html" class="active" data-i18n="nav_analysis">상세 분석</a>
+    <a href="portfolio.html" data-i18n="nav_portfolio">포트폴리오</a>
+    <a href="apply.html" data-i18n="nav_apply">신청 보조</a>
+    <a href="community.html" data-i18n="nav_community">커뮤니티</a>
+  </div>
+  <div class="nav-right">
+
+    <!-- ── 언어 선택 드롭다운 (다른 페이지와 동일 구조) ── -->
+    <div id="langSelector" class="lang-selector">
+      <button id="langBtn" class="lang-btn" onclick="toggleLangDropdown()" aria-haspopup="true" aria-expanded="false">
+        <svg class="globe-svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/>
+        </svg>
+        <span class="lang-label-text" id="currentLangLabel">한국어</span>
+        <svg class="lang-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div id="langDropdown" class="lang-dropdown">
+        <div class="lang-dropdown-inner">
+          <div class="lang-option active" onclick="selectLanguage(this, '한국어')" data-lang-code="ko">
+            <span class="lang-flag">🇰🇷</span><span>한국어</span>
+            <svg class="lang-check" viewBox="0 0 13 13" fill="none"><path d="M2 6.5l3.5 3.5 5.5-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="lang-option" onclick="selectLanguage(this, 'English')" data-lang-code="en"><span class="lang-flag">🇺🇸</span><span>English</span></div>
+          <div class="lang-divider"></div>
+          <div class="lang-option" onclick="selectLanguage(this, '日本語')" data-lang-code="ja"><span class="lang-flag">🇯🇵</span><span>日本語</span></div>
+          <div class="lang-option" onclick="selectLanguage(this, '中文')" data-lang-code="zh"><span class="lang-flag">🇨🇳</span><span>中文</span></div>
+          <div class="lang-option" onclick="selectLanguage(this, 'Filipino')" data-lang-code="fil"><span class="lang-flag">🇵🇭</span><span>Filipino</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 유저 아바타 드롭다운 ── -->
+    <div class="user-dropdown-wrap">
+      <div class="nav-avatar" id="userAvatarBtn">
+        <div class="avatar-circle">테</div>
+        <span class="avatar-name">테스트 유저님</span>
+        <span>▾</span>
+      </div>
+
+      <!-- Dropdown -->
+      <div class="user-dropdown-menu" id="userDropdown">
+        <!-- Profile Head -->
+        <div class="dropdown-profile-head">
+          <div class="dropdown-avatar">테</div>
+          <div class="dropdown-profile-info">
+            <h4>테스트 유저님</h4>
+            <p>test@example.com</p>
+          </div>
+        </div>
+
+        <!-- Menu Items -->
+        <a href="scrap.html" class="dropdown-menu-item">
+          <span class="item-icon">📌</span>
+          스크랩
+        </a>
+        <a href="portfolio.html" class="dropdown-menu-item">
+          <span class="item-icon">💼</span>
+          <span data-i18n="nav_user_profile" style="display:none"></span>내 포트폴리오
+        </a>
+        <a href="profile.html" class="dropdown-menu-item">
+          <span class="item-icon">👤</span>
+          <span data-i18n="nav_user_profile">개인정보 수정</span>
+        </a>
+
+        <div class="dropdown-divider"></div>
+
+        <!-- Recently Viewed -->
+        <div class="dropdown-recent-section">
+          <div class="dropdown-recent-title">
+            <span class="material-symbols-rounded" style="font-size:12px;font-variation-settings:'FILL' 0,'wght' 500;">history</span>
+            <span data-i18n="rv_title">최근 본 공고</span>
+          </div>
+          <div id="dropdownRecentList"></div>
+          <a href="#recently-viewed" class="dropdown-recent-more" onclick="closeUserDropdown()">전체 보기 →</a>
+        </div>
+
+        <div class="dropdown-divider"></div>
+
+        <a href="login.html" class="dropdown-menu-item danger">
+          <span class="item-icon">🚪</span>
+          <span data-i18n="nav_user_logout">로그아웃</span>
+        </a>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+  <div style="max-width:900px;margin:0 auto;">
+
+    <!-- Demo label -->
+    <div class="demo-section">
+      <div class="demo-section-label">① 네비게이션 드롭다운 — 최근 본 공고</div>
+      <p style="font-size:14px;color:var(--gray-700);line-height:1.8;">
+        우측 상단 <strong>테스트 유저님 ▾</strong> 버튼을 클릭하면 드롭다운 메뉴가 열립니다.<br>
+        하단에 <strong data-i18n="rv_title">최근 본 공고</strong> 섹션이 컴팩트하게 표시되며, 정책명은 말줄임 처리됩니다.
+      </p>
+    </div>
+
+    <!-- Detail page section demo -->
+    <div class="demo-section">
+      <div class="demo-section-label">② 상세 페이지 하단 — 비슷한 정책 가로 스크롤</div>
+
+      <!-- Simulated detail card top -->
+      <div style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:var(--radius);padding:20px;margin-bottom:0;">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;">
+          <div style="font-size:32px;">🏠</div>
+          <div>
+            <div style="font-size:18px;font-weight:800;color:var(--gray-900);">청년 월세 한시 특별지원</div>
+            <div style="font-size:13px;color:var(--gray-500);">주거 지원 · 연 240만원 혜택</div>
+          </div>
+          <div style="margin-left:auto;text-align:center;">
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:36px;font-weight:800;color:var(--green);line-height:1;">92%</div>
+            <div style="font-size:11px;color:var(--gray-500);" data-i18n="prob_label">수급 확률</div>
+          </div>
+        </div>
+
+        <!-- Recently Viewed Section (inside detail page) -->
+        <div class="recently-viewed-section" id="recently-viewed">
+          <div class="recently-viewed-header">
+            <h3>
+              <span class="material-symbols-rounded" style="font-size:18px;color:var(--gray-500);font-variation-settings:'FILL' 0,'wght' 500;">history</span>
+              <span data-i18n="rv_similar_title">방금 보신 공고와 비슷한 정책</span>
+            </h3>
+            <a href="search.html">전체 보기 →</a>
+          </div>
+          <div class="recently-viewed-scroll-wrap">
+            <button class="scroll-arrow left hidden" id="scrollLeft" onclick="scrollRV(-1)">‹</button>
+            <div class="recently-viewed-scroll" id="rvScroll"></div>
+            <button class="scroll-arrow right" id="scrollRight" onclick="scrollRV(1)">›</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ── Data ── */
+const RECENT_POLICIES = [
+  { id:1, icon:'🏠', name:'청년 월세 한시 특별지원', amount:'240만원', prob:92, timeAgo:'방금 전', isNew:false },
+  { id:2, icon:'📚', name:'국민내일배움카드', amount:'500만원', prob:88, timeAgo:'10분 전', isNew:true },
+  { id:3, icon:'💰', name:'청년도약계좌', amount:'70만원/년', prob:65, timeAgo:'23분 전', isNew:false },
+  { id:4, icon:'🏥', name:'청년 마음건강 지원', amount:'80만원', prob:76, timeAgo:'1시간 전', isNew:false },
+  { id:5, icon:'🎓', name:'청년 취업아카데미', amount:'150만원', prob:72, timeAgo:'2시간 전', isNew:false },
+  { id:6, icon:'🔑', name:'청년 전·월세 보증금 대출', amount:'최대 5천만원', prob:58, timeAgo:'3시간 전', isNew:true },
+  { id:7, icon:'⚡', name:'중소기업 취업 청년 소득세 감면', amount:'최대 150만원', prob:81, timeAgo:'어제', isNew:false },
+];
+
+/* ── Dropdown Recent List ── */
+function renderDropdownRecent() {
+  const list = document.getElementById('dropdownRecentList');
+  const probLabel = (typeof TRANSLATIONS !== 'undefined' && TRANSLATIONS[_currentLang()])
+    ? (TRANSLATIONS[_currentLang()].rv_prob_label || '확률')
+    : '확률';
+  list.innerHTML = RECENT_POLICIES.slice(0, 4).map(p => `
+    <a href="analysis.html" class="dropdown-recent-item">
+      <div class="dropdown-recent-icon">${p.icon}</div>
+      <div class="dropdown-recent-info">
+        <div class="dropdown-recent-name">${p.name}</div>
+        <div class="dropdown-recent-meta">${p.amount} · ${probLabel} ${p.prob}%</div>
+      </div>
+      <div class="dropdown-recent-time">${p.timeAgo}</div>
+    </a>
+  `).join('');
+}
+
+/* ── Helper: get current lang ── */
+function _currentLang() {
+  try { return localStorage.getItem('benefic_lang') || 'ko'; } catch(e) { return 'ko'; }
+}
+
+/* ── Horizontal Scroll Cards ── */
+function renderRVCards() {
+  const scroll = document.getElementById('rvScroll');
+  const lang = _currentLang();
+  const t = (typeof TRANSLATIONS !== 'undefined' && TRANSLATIONS[lang]) ? TRANSLATIONS[lang] : {};
+  const probLabel = t.rv_prob_label || '수급 확률';
+  const timeLabel = t.rv_time_ago || '조회';
+
+  const similar = RECENT_POLICIES.filter(p => p.id !== 1);
+  scroll.innerHTML = similar.map(p => `
+    <div class="rv-card" onclick="window.location='analysis.html'">
+      ${p.isNew ? `<div class="rv-card-new-badge">NEW</div>` : ''}
+      <div class="rv-card-icon">${p.icon}</div>
+      <div class="rv-card-name">${p.name}</div>
+      <div class="rv-card-amount">${p.amount}</div>
+      <div class="rv-card-prob">${probLabel} ${p.prob}%</div>
+      <div class="rv-card-time">🕐 ${p.timeAgo} ${timeLabel}</div>
+    </div>
+  `).join('');
+
+  scroll.addEventListener('scroll', updateArrows);
+  updateArrows();
+}
+
+function updateArrows() {
+  const scroll = document.getElementById('rvScroll');
+  const leftBtn = document.getElementById('scrollLeft');
+  const rightBtn = document.getElementById('scrollRight');
+  leftBtn.classList.toggle('hidden', scroll.scrollLeft < 20);
+  rightBtn.classList.toggle('hidden', scroll.scrollLeft + scroll.clientWidth >= scroll.scrollWidth - 20);
+}
+
+function scrollRV(dir) {
+  const scroll = document.getElementById('rvScroll');
+  scroll.scrollBy({ left: dir * 220, behavior: 'smooth' });
+}
+
+/* ── Dropdown Toggle ── */
+function toggleUserDropdown() {
+  const menu = document.getElementById('userDropdown');
+  menu.classList.toggle('open');
+}
+function closeUserDropdown() {
+  document.getElementById('userDropdown').classList.remove('open');
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.user-dropdown-wrap')) closeUserDropdown();
+});
+
+/* ── Avatar button click ── */
+document.getElementById('userAvatarBtn').addEventListener('click', toggleUserDropdown);
+
+/* Init */
+renderDropdownRecent();
+renderRVCards();
+</script>
+
+<!-- 로드 순서: main.js → i18n.js (다른 모든 페이지와 동일) -->
+<!-- main.js가 먼저여야 toggleLangDropdown 등 함수가 nav 클릭 시점에 존재함 -->
+<!-- i18n.js는 자체적으로 window load 이벤트에서 initLanguage()를 호출함 -->
+<script src="main.js" onerror="void 0"></script>
+<script src="i18n.js" onerror="void 0"></script>
+</body>
+</html>

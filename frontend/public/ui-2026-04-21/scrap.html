@@ -1,0 +1,857 @@
+﻿<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>베네픽 v2.0 — 스크랩</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+
+/* ── Material Symbols 박스 렌더링 방지 ── */
+.material-symbols-rounded {
+  font-family: 'Material Symbols Rounded';
+  font-style: normal;
+  font-weight: normal;
+  font-display: swap;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  overflow: hidden;
+  background: transparent !important;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Bookmark button ── */
+.bookmark-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  line-height: 1;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.bookmark-btn:hover { opacity: 0.55; }
+.bookmark-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: var(--orange);
+  display: block;
+}
+.bookmark-btn.pop svg {
+  animation: bookmarkPop 0.35s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes bookmarkPop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.4); }
+  100% { transform: scale(1); }
+}
+
+/* ── Page Header ── */
+.scrap-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.scrap-count-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--orange-light);
+  border: 1px solid rgba(59,130,246,.2);
+  color: var(--orange);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 20px;
+}
+
+/* ── Toolbar ── */
+.scrap-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #fff;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius) var(--radius) 0 0;
+  border-bottom: 1px solid var(--gray-100);
+}
+.scrap-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.scrap-select-all {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-700);
+  cursor: pointer;
+  user-select: none;
+}
+.scrap-select-all input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--orange);
+  cursor: pointer;
+}
+.scrap-toolbar-divider { width: 1px; height: 14px; background: var(--gray-200); }
+.scrap-search-input {
+  border: none;
+  outline: none;
+  font-size: 13px;
+  color: var(--gray-700);
+  font-family: inherit;
+  background: transparent;
+  width: 160px;
+}
+.scrap-search-input::placeholder { color: var(--gray-400); }
+.scrap-toolbar-right { display: flex; align-items: center; gap: 8px; }
+.scrap-sort-select {
+  border: 1.5px solid var(--gray-200);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-700);
+  background: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  outline: none;
+}
+
+/* ── Filter Chips ── */
+.scrap-filter-row {
+  display: flex;
+  gap: 6px;
+  padding: 10px 16px;
+  background: #fff;
+  border: 1px solid var(--gray-200);
+  border-top: none;
+  border-bottom: 1px solid var(--gray-100);
+}
+.scrap-filter-chip {
+  padding: 5px 14px;
+  border: 1.5px solid var(--gray-200);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-500);
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.scrap-filter-chip:hover { border-color: var(--orange); color: var(--orange); }
+.scrap-filter-chip.active {
+  background: var(--orange);
+  border-color: var(--orange);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(59,130,246,.25);
+}
+
+/* ── 핵심: 그리드 → 리스트 ── */
+.scrap-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: #fff;
+  border: 1px solid var(--gray-200);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  overflow: hidden;
+}
+
+/* ── 리스트 아이템 ── */
+.scrap-policy-card {
+  display: flex;
+  align-items: center;
+  padding: 18px 16px;
+  gap: 12px;
+  border-bottom: 1px solid var(--gray-100);
+  background: #fff;
+  transition: background 0.12s;
+  /* 기존 카드 스타일 리셋 */
+  border-radius: 0;
+  box-shadow: none;
+  cursor: default;
+  position: relative;
+}
+.scrap-policy-card:last-child { border-bottom: none; }
+.scrap-policy-card:hover { background: var(--gray-50); transform: none; box-shadow: none; }
+.scrap-policy-card.removing {
+  animation: cardRemove 0.28s ease forwards;
+  overflow: hidden;
+}
+@keyframes cardRemove {
+  to { opacity: 0; max-height: 0; padding: 0; }
+}
+
+/* Checkbox */
+.scrap-item-cb {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--orange);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* 왼쪽 정보 */
+.scrap-card-left { flex: 1; min-width: 0; }
+
+.scrap-card-category {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--blue);
+  margin-bottom: 3px;
+  letter-spacing: 0.2px;
+}
+
+.scrap-card-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--gray-900);
+  line-height: 1.4;
+  margin-bottom: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scrap-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--gray-500);
+  margin-bottom: 7px;
+}
+.meta-tag {
+  display: inline-flex;
+  align-items: center;
+  background: var(--gray-100);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  color: var(--gray-600, #4b5563);
+}
+.meta-tag.green { background: var(--green-light); color: var(--green); }
+.meta-tag.orange { background: var(--orange-light); color: var(--orange); }
+.meta-dot { color: var(--gray-300); }
+
+.scrap-card-bottom {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.scrap-memo-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--gray-400);
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+  font-family: inherit;
+  transition: color 0.15s;
+}
+.scrap-memo-btn:hover { color: var(--orange); }
+
+.prob-mini { display: flex; align-items: center; gap: 5px; font-size: 11px; }
+.prob-bar-mini {
+  width: 56px; height: 4px;
+  background: var(--gray-100);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.prob-fill-mini {
+  height: 100%;
+  border-radius: 10px;
+  background: linear-gradient(90deg, var(--green), #27ae60);
+  transition: width 0.7s cubic-bezier(.16,1,.3,1);
+}
+.prob-val { color: var(--green); font-weight: 700; }
+
+/* 오른쪽 액션 */
+.scrap-card-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+  min-width: 108px;
+}
+.scrap-apply-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--orange);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 9px 0;
+  border-radius: 8px;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
+  white-space: nowrap;
+  width: 100%;
+}
+.scrap-apply-btn:hover { background: #2563EB; }
+
+.scrap-amount-badge {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--green);
+}
+.scrap-date {
+  font-size: 11px;
+  color: var(--gray-400);
+  font-weight: 500;
+}
+
+/* ── Empty ── */
+.scrap-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 80px 40px;
+  text-align: center;
+}
+.scrap-empty-icon { font-size: 56px; margin-bottom: 16px; opacity: 0.4; filter: grayscale(1); }
+.scrap-empty h3 { font-size: 18px; font-weight: 700; color: var(--gray-700); margin-bottom: 8px; }
+.scrap-empty p { font-size: 14px; color: var(--gray-500); margin-bottom: 24px; line-height: 1.7; }
+.scrap-empty-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: linear-gradient(135deg, var(--blue), var(--blue-dark));
+  color: #fff;
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 4px 14px rgba(59,130,246,.35);
+  transition: all 0.15s;
+}
+.scrap-empty-cta:hover { transform: translateY(-2px); }
+
+/* ── Toast ── */
+.scrap-toast {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: var(--gray-900);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 12px 22px;
+  border-radius: 30px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.2);
+  z-index: 9999;
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.25s cubic-bezier(.34,1.56,.64,1);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.scrap-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.scrap-toast.orange { background: var(--orange); }
+
+/* ── Sidebar ── */
+.scrap-sidebar-total {
+  background: linear-gradient(135deg, #0F172A, #1E293B);
+  border: none;
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 20px rgba(15,23,42,.2);
+}
+.scrap-sidebar-total h4 { font-size: 13px; font-weight: 700; color: #94A3B8; margin-bottom: 12px; }
+.scrap-sidebar-total-amount {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 28px;
+  font-weight: 800;
+  color: #10B981;
+  margin-bottom: 4px;
+}
+.scrap-sidebar-total-sub { font-size: 12px; color: #64748B; }
+
+.scrap-sidebar-card {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  padding: 18px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-sm);
+}
+.scrap-sidebar-card h4 { font-size: 13px; font-weight: 700; color: var(--gray-700); margin-bottom: 12px; }
+
+.scrap-rank-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--gray-100);
+}
+.scrap-rank-item:last-child { border-bottom: none; }
+.scrap-rank-num {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--gray-100);
+  font-size: 11px; font-weight: 700; color: var(--gray-500);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.scrap-rank-num.top { background: var(--orange-light); color: var(--orange); }
+.scrap-rank-info { flex: 1; min-width: 0; }
+.scrap-rank-name { font-size: 13px; font-weight: 600; color: var(--gray-900); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.scrap-rank-amount { font-size: 11px; color: var(--green); font-weight: 700; }
+
+/* ══════════════════════════════════════════
+   아바타 드롭다운 클릭 완전 해결
+   핵심 원인:
+   1. style.css의 .avatar-dropdown { overflow: hidden } → 내부 클릭 차단
+   2. nav { position:sticky } stacking context → z-index 충돌
+   3. .container { position:relative } → 드롭다운 위를 덮음
+   ══════════════════════════════════════════ */
+nav {
+  overflow: visible !important;
+  isolation: auto !important;
+}
+.nav-right {
+  overflow: visible !important;
+}
+.nav-avatar-wrap {
+  position: relative !important;
+  overflow: visible !important;
+}
+/* style.css의 overflow:hidden 을 덮어쓰는 것이 핵심 */
+.avatar-dropdown {
+  overflow: visible !important;
+  z-index: 9999 !important;
+  position: absolute !important;
+}
+.avatar-dropdown.open {
+  display: block !important;
+}
+/* 드롭다운 내부 아이템 클릭 보장 */
+.avatar-dropdown-inner {
+  position: relative !important;
+  z-index: 9999 !important;
+}
+.avatar-dd-item {
+  pointer-events: auto !important;
+  position: relative !important;
+  z-index: 9999 !important;
+}
+/* container가 드롭다운 위를 덮지 않도록 */
+.container {
+  position: relative;
+  z-index: 0;
+}
+</style>
+</head>
+<body>
+
+<!-- Toast -->
+<div class="scrap-toast" id="scrapToast"></div>
+
+<!-- NAV -->
+<nav>
+  <a href="index.html" class="nav-logo">
+    <div class="logo-mark">B</div>
+    <div class="logo-text">
+      <span class="logo-name" data-i18n="logo_name">베네픽</span>
+      <span class="logo-tag" data-i18n="logo_tag">복지 수급 확률 분석 v2.0</span>
+    </div>
+  </a>
+  <div class="nav-center">
+    <a href="index.html" data-i18n="nav_dashboard">대시보드</a>
+    <a href="search.html" data-i18n="nav_search">정책 검색</a>
+    <a href="analysis.html" data-i18n="nav_analysis">상세 분석</a>
+    <a href="portfolio.html" data-i18n="nav_portfolio">포트폴리오</a>
+    <a href="apply.html" data-i18n="nav_apply">신청 보조</a>
+    <a href="community.html" data-i18n="nav_community">커뮤니티</a>
+  </div>
+  <div class="nav-right">
+    <div id="langSelector" class="lang-selector">
+      <button id="langBtn" class="lang-btn" onclick="toggleLangDropdown()" aria-haspopup="true" aria-expanded="false">
+        <svg class="globe-svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/>
+        </svg>
+        <span class="lang-label-text" id="currentLangLabel">한국어</span>
+        <svg class="lang-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div id="langDropdown" class="lang-dropdown">
+        <div class="lang-dropdown-inner">
+          <div class="lang-option active" onclick="selectLanguage(this, '한국어')" data-lang-code="ko">
+            <span class="lang-flag">🇰🇷</span><span>한국어</span>
+            <svg class="lang-check" viewBox="0 0 13 13" fill="none"><path d="M2 6.5l3.5 3.5 5.5-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="lang-option" onclick="selectLanguage(this, 'English')" data-lang-code="en"><span class="lang-flag">🇺🇸</span><span>English</span></div>
+          <div class="lang-divider"></div>
+          <div class="lang-option" onclick="selectLanguage(this, '日本語')" data-lang-code="ja"><span class="lang-flag">🇯🇵</span><span>日本語</span></div>
+          <div class="lang-option" onclick="selectLanguage(this, '中文')" data-lang-code="zh"><span class="lang-flag">🇨🇳</span><span>中文</span></div>
+          <div class="lang-option" onclick="selectLanguage(this, 'Filipino')" data-lang-code="fil"><span class="lang-flag">🇵🇭</span><span>Filipino</span></div>
+        </div>
+      </div>
+    </div>
+    <!-- main.js의 initAuthNav()가 이 요소를 갈아끼워 드롭다운을 생성함 -->
+    <div class="nav-avatar">
+      <div class="avatar-circle">나</div>
+      <span class="avatar-name">로딩 중...</span>
+      <span>▾</span>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+  <div style="max-width:1100px;margin:0 auto;">
+
+    <!-- Page Header -->
+    <div class="scrap-page-header">
+      <div>
+        <h2 style="font-size:22px;font-weight:800;color:var(--gray-900);margin-bottom:6px;">
+          🔖 <span data-i18n="scrap_title">스크랩</span>
+        </h2>
+        <p style="font-size:14px;color:var(--gray-500);" data-i18n="scrap_desc">관심 있는 정책을 모아서 확인하고 신청 상태를 관리하세요.</p>
+      </div>
+
+    </div>
+
+    <!-- Layout -->
+    <div class="grid-main" style="grid-template-columns:1fr 280px;">
+
+      <!-- Main -->
+      <div>
+
+        <!-- Toolbar -->
+        <div class="scrap-toolbar">
+          <div class="scrap-toolbar-left">
+            <label class="scrap-select-all">
+              <input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)">
+              <span data-i18n="scrap_select_all">전체선택</span>
+            </label>
+            <button onclick="deleteSelected()" style="background:none;border:none;font-size:13px;font-weight:600;color:#E74C3C;cursor:pointer;padding:0;font-family:inherit;" data-i18n="scrap_delete">삭제</button>
+            <div class="scrap-toolbar-divider"></div>
+            <input class="scrap-search-input" type="text" placeholder="검색" data-i18n-placeholder="scrap_search_placeholder" oninput="searchScrap(this.value)">
+          </div>
+          <div class="scrap-toolbar-right">
+            <select class="scrap-sort-select" onchange="sortScrap(this.value)">
+              <option value="date" data-i18n-opt="scrap_sort_date">스크랩일</option>
+              <option value="amount" data-i18n-opt="scrap_sort_amount">혜택 큰순</option>
+              <option value="prob" data-i18n-opt="scrap_sort_prob">확률 높은순</option>
+            </select>
+          </div>
+        </div>
+
+
+        <!-- List -->
+        <div class="scrap-grid" id="scrapGrid"></div>
+
+      </div>
+
+      <!-- Sidebar -->
+      <div>
+        <div class="scrap-sidebar-total">
+          <h4 data-i18n="scrap_sidebar_total_title">💰 저장 정책 총 혜택</h4>
+          <div class="scrap-sidebar-total-amount" id="sidebarTotal">0만원</div>
+          <div class="scrap-sidebar-total-sub" data-i18n="scrap_sidebar_total_sub">스크랩된 정책 기준 연간 예상액</div>
+        </div>
+        <div class="scrap-sidebar-card">
+          <h4 data-i18n="scrap_sidebar_rank_title">🏆 혜택 큰 순서</h4>
+          <div id="scrapRankList"></div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="main.js"></script>
+<script src="i18n.js"></script>
+<script>
+// ── 데이터 ──────────────────────────────────────────────────────
+const ALL_POLICIES = [
+  { id:1, icon:'🏠', cat:'주거', tag:'즉시신청', name:'청년 월세 한시 특별지원', amount:'240만원', amountNum:240, period:'월 20만원 × 12개월', prob:92, date:'2025.04.10', region:'전국', type:'현금지원' },
+  { id:2, icon:'📚', cat:'교육', tag:'즉시신청', name:'국민내일배움카드',         amount:'500만원', amountNum:500, period:'훈련비 전액 지원',    prob:88, date:'2025.04.08', region:'전국', type:'바우처'   },
+  { id:3, icon:'🏥', cat:'건강', tag:'즉시신청', name:'청년 마음건강 지원',       amount:'80만원',  amountNum:80,  period:'상담 10회 × 8만원',  prob:76, date:'2025.04.07', region:'서울', type:'서비스'   },
+  { id:4, icon:'💰', cat:'금융', tag:'조건필요', name:'청년도약계좌',             amount:'70만원/년',amountNum:70, period:'정부기여금 포함',     prob:65, date:'2025.04.05', region:'전국', type:'금융'     },
+  { id:5, icon:'🎓', cat:'청년', tag:'조건필요', name:'청년 취업아카데미',        amount:'150만원', amountNum:150, period:'교육비 + 수당',       prob:72, date:'2025.04.02', region:'경기', type:'교육'     },
+];
+
+let scrapData    = ALL_POLICIES.map(p => ({...p, checked: false}));
+let scrapFilter  = 'all';
+let scrapSearch  = '';
+let scrapSort    = 'date';
+
+function t(key, fallback) {
+  try {
+    const lang = localStorage.getItem('benefic_lang') || 'ko';
+    if (typeof TRANSLATIONS !== 'undefined' && TRANSLATIONS[lang] && TRANSLATIONS[lang][key] !== undefined) {
+      return TRANSLATIONS[lang][key];
+    }
+  } catch(e) {}
+  return fallback;
+}
+
+// ── 필터/정렬 ───────────────────────────────────────────────────
+function scrapGetFiltered() {
+  let d = scrapData;
+  if (scrapFilter !== 'all') d = d.filter(p => p.tag === scrapFilter || p.cat.includes(scrapFilter));
+  if (scrapSearch) d = d.filter(p => p.name.includes(scrapSearch) || p.cat.includes(scrapSearch));
+  if (scrapSort === 'amount') d = [...d].sort((a,b) => b.amountNum - a.amountNum);
+  else if (scrapSort === 'prob') d = [...d].sort((a,b) => b.prob - a.prob);
+  else d = [...d].sort((a,b) => b.date.localeCompare(a.date));
+  return d;
+}
+
+// ── 렌더 ────────────────────────────────────────────────────────
+function scrapRenderGrid(data) {
+  const grid = document.getElementById('scrapGrid');
+  if (!grid) return;
+  if (data.length === 0) {
+    grid.innerHTML = `
+      <div class="scrap-empty">
+        <div class="scrap-empty-icon">🔖</div>
+        <h3 data-i18n="scrap_empty">${t('scrap_empty', '스크랩한 정책이 없습니다.')}</h3>
+        <p data-i18n="scrap_empty_desc">관심 있는 정책을 담아보세요.<br>정책 카드의 🔖 아이콘을 클릭해 저장할 수 있어요.</p>
+        <a href="search.html" class="scrap-empty-cta">
+          <span class="material-symbols-rounded" style="font-size:16px;">search</span>
+          <span data-i18n="scrap_search_link">정책 검색하기</span>
+        </a>
+      </div>`;
+    // 빈 상태도 번역 적용
+    if (typeof applyTranslations === 'function') applyTranslations(loadLang());
+    return;
+  }
+  grid.innerHTML = data.map(p => {
+    // tag 값은 데이터 내부 한국어 원본이므로 i18n 키로 매핑
+    const isImmediate = p.tag === '즉시신청';
+    const tagClass    = isImmediate ? 'green' : 'orange';
+    const tagI18nKey  = isImmediate ? 'scrap_tag_immediate' : 'scrap_tag_condition';
+    const tagFallback = isImmediate ? '✅ 즉시신청' : '⚡ 조건필요';
+    return `
+    <div class="scrap-policy-card" id="card-${p.id}">
+      <input type="checkbox" class="scrap-item-cb"
+        ${p.checked ? 'checked' : ''}
+        onchange="scrapToggleCb(${p.id}, this.checked)">
+      <div class="scrap-card-left">
+        <div class="scrap-card-category">${p.icon} ${p.cat}</div>
+        <div class="scrap-card-name">${p.name}</div>
+        <div class="scrap-card-meta">
+          <span class="meta-tag ${tagClass}" data-i18n="${tagI18nKey}">${tagFallback}</span>
+          <span class="meta-dot">·</span><span>${p.region}</span>
+          <span class="meta-dot">·</span><span>${p.type}</span>
+          <span class="meta-dot">·</span><span>${p.period}</span>
+        </div>
+      </div>
+      <div class="scrap-card-right">
+        <a href="apply.html" class="scrap-apply-btn" data-i18n="scrap_apply_btn">즉시신청</a>
+        <div class="scrap-amount-badge">${p.amount}</div>
+        <div class="scrap-date">~${p.date}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // ✅ 핵심 수정: 동적 DOM 생성 완료 직후 즉시 번역 재적용
+  if (typeof applyTranslations === 'function' && typeof loadLang === 'function') {
+    applyTranslations(loadLang());
+  }
+}
+
+function scrapRenderSidebar() {
+  const total = scrapData.reduce((s, p) => s + p.amountNum, 0);
+  const totalEl = document.getElementById('sidebarTotal');
+  const countEl = document.getElementById('scrapCountText');
+  const badge   = document.getElementById('scrapCountBadge');
+  const rankEl  = document.getElementById('scrapRankList');
+
+  if (totalEl) totalEl.textContent = total.toLocaleString() + '만원';
+  if (countEl) countEl.textContent = `${scrapData.length}${t('scrap_count_unit', '개의 정책')}`;
+  if (badge)   badge.style.display = scrapData.length > 0 ? 'inline-flex' : 'none';
+  if (rankEl) {
+    const sorted = [...scrapData].sort((a,b) => b.amountNum - a.amountNum);
+    rankEl.innerHTML = sorted.slice(0,5).map((p,i) => `
+      <div class="scrap-rank-item">
+        <div class="scrap-rank-num ${i===0?'top':''}">${i+1}</div>
+        <div class="scrap-rank-info">
+          <div class="scrap-rank-name">${p.name}</div>
+          <div class="scrap-rank-amount">${p.amount}</div>
+        </div>
+      </div>`).join('');
+  }
+}
+
+// ── 이벤트 핸들러 ────────────────────────────────────────────────
+// main.js의 toggleCheck(el)과 이름 충돌 방지 → scrapToggleCb 사용
+function scrapToggleCb(id, checked) {
+  const p = scrapData.find(p => p.id === id);
+  if (p) p.checked = checked;
+  // 전체선택 체크박스 동기화
+  const allChecked = scrapData.length > 0 && scrapData.every(p => p.checked);
+  const sa = document.getElementById('selectAll');
+  if (sa) sa.checked = allChecked;
+}
+
+function filterScrap(tag, btn) {
+  scrapFilter = tag;
+  document.querySelectorAll('.scrap-filter-chip').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  scrapRenderGrid(scrapGetFiltered());
+}
+
+function searchScrap(val) {
+  scrapSearch = val.trim();
+  scrapRenderGrid(scrapGetFiltered());
+}
+
+function sortScrap(val) {
+  scrapSort = val;
+  scrapRenderGrid(scrapGetFiltered());
+}
+
+function deleteSelected() {
+  const checked = scrapData.filter(p => p.checked);
+  if (checked.length === 0) { scrapShowToast('삭제할 항목을 선택해주세요'); return; }
+  checked.forEach(p => {
+    const card = document.getElementById('card-' + p.id);
+    if (card) card.classList.add('removing');
+  });
+  setTimeout(() => {
+    scrapData = scrapData.filter(p => !p.checked);
+    const sa = document.getElementById('selectAll');
+    if (sa) sa.checked = false;
+    scrapRenderGrid(scrapGetFiltered());
+    scrapRenderSidebar();
+    scrapShowToast('🗑️ 선택한 항목을 삭제했어요');
+  }, 280);
+}
+
+function toggleSelectAll(el) {
+  scrapData.forEach(p => p.checked = el.checked);
+  // 리렌더 없이 개별 체크박스 DOM 직접 업데이트
+  document.querySelectorAll('.scrap-item-cb').forEach(cb => {
+    cb.checked = el.checked;
+  });
+}
+
+function toggleBookmark(id, e) {
+  e.stopPropagation();
+  const btn = e.currentTarget;
+  const card = document.getElementById('card-' + id);
+  btn.classList.add('pop');
+  setTimeout(() => btn.classList.remove('pop'), 350);
+  card.classList.add('removing');
+  setTimeout(() => {
+    scrapData = scrapData.filter(p => p.id !== id);
+    scrapRenderGrid(scrapGetFiltered());
+    scrapRenderSidebar();
+    scrapShowToast('🔖 스크랩에서 제거했어요');
+  }, 280);
+}
+
+function memoClick(id) {
+  const p = scrapData.find(p => p.id === id);
+  if (!p) return;
+  const memo = prompt(`"${p.name}" 메모`, p.memo || '');
+  if (memo !== null) { p.memo = memo; scrapShowToast('✏️ 메모가 저장되었어요', true); }
+}
+
+// main.js 전역 showToast와 충돌 방지 — 별도 함수명 사용
+function scrapShowToast(msg, isOrange) {
+  const t = document.getElementById('scrapToast');
+  if (!t) return;
+  t.textContent = msg;
+  t.className = 'scrap-toast show' + (isOrange ? ' orange' : '');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.classList.remove('show'); }, 2200);
+}
+
+// ── 초기화 ──────────────────────────────────────────────────────
+function scrapInit() {
+  // 1. 보안 체크: 토큰 없으면 즉시 로그인 페이지로 (replace → 뒤로가기 방지)
+  if (!localStorage.getItem('token')) {
+    location.replace('login.html');
+    return;
+  }
+
+  // 2. UI 초기화: main.js의 공통 네비게이션 렌더링
+  if (typeof initAuthNav === 'function' && !document.querySelector('.nav-avatar-wrap')) {
+    initAuthNav();
+  }
+
+  // 3. 드롭다운 버블링 완전 차단 + 링크 정상화
+  const dd = document.getElementById('avatarDropdown');
+  if (dd) {
+    dd.addEventListener('click', function(e) { e.stopPropagation(); });
+    dd.querySelectorAll('.avatar-dd-item').forEach(item => {
+      if ((item.getAttribute('href') || '') === 'profile.html') {
+        item.href = 'profile.html';
+        item.onclick = null;
+      }
+      if ((item.getAttribute('href') || '') === 'recently-viewed.html') {
+        item.href = 'recently-viewed.html';
+        item.onclick = null;
+      }
+    });
+  }
+
+  // 4. 데이터 렌더링
+  //    scrapRenderGrid() 내부에서 applyTranslations()를 호출하므로
+  //    동적 카드 생성 직후 번역이 즉시 적용됨
+  scrapRenderGrid(scrapGetFiltered());
+  scrapRenderSidebar();
+
+  // 5. ✅ 정적 요소(툴바, 사이드바 헤더 등) 번역 보장
+  //    i18n.js의 window load 핸들러보다 먼저 실행될 수 있으므로
+  //    여기서도 명시적으로 한 번 더 호출
+  if (typeof applyTranslations === 'function' && typeof loadLang === 'function') {
+    applyTranslations(loadLang());
+  }
+}
+
+// ── 실행 순서 보장 ───────────────────────────────────────────────
+// main.js도 DOMContentLoaded에서 initAuthNav를 등록함.
+// scrap.html 하단 스크립트는 DOM이 이미 완성된 시점에 파싱되므로
+// DOMContentLoaded는 이미 발화했거나 곧 발화한다.
+// → 동일 이벤트 큐에서 initAuthNav(from main.js) 실행 후 scrapInit이 실행되도록
+//    scrapInit도 DOMContentLoaded에 등록한다. (즉시 실행 시 initAuthNav보다 먼저 돌 수 있음)
+if (document.readyState === 'loading') {
+  // 아직 파싱 중이면 DOMContentLoaded 대기 (드문 경우)
+  document.addEventListener('DOMContentLoaded', scrapInit);
+} else {
+  // 이미 파싱 완료 (스크립트가 </body> 직전에 있는 일반적인 경우)
+  // main.js의 DOMContentLoaded 핸들러가 이미 등록됐으므로 queueMicrotask로
+  // 현재 실행 스택이 끝난 직후 — DOMContentLoaded 핸들러들이 모두 처리된 후 실행
+  queueMicrotask(scrapInit);
+}
+</script>
+</body>
+</html>
+
+
+

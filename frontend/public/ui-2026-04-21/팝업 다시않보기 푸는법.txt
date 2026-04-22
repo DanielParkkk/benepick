@@ -1,0 +1,4 @@
+① 브라우저 콘솔에서 즉시 초기화 (가장 빠름)
+allow pasting
+localStorage.removeItem('benefic_seen_guide')
+F12 → Console 탭에 붙여넣고 Enter. 새로고침하면 팝업 다시 뜸.
