@@ -24,7 +24,7 @@ class PolicyDetailEnrichmentService:
         prompt_dir = base_dir / "prompts"
         csv_path = str(base_dir / "benepick_dict.csv")
         summary_model = os.getenv("QWEN_SUMMARY_MODEL") or os.getenv("QWEN_MODEL", "qwen3.5:4b")
-        translation_model = os.getenv("QWEN_TRANSLATION_MODEL", "benepick-qwen35-translation:latest")
+        translation_model = os.getenv("QWEN_TRANSLATION_MODEL", "qwen3.5:4b")
         reasoner_model = os.getenv("QWEN_REASONER_MODEL") or summary_model
 
         self.guard = OutputGuard()

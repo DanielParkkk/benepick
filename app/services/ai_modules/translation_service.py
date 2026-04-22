@@ -56,7 +56,7 @@ class PolicyTranslationService:
             model_name
             or os.getenv("QWEN_TRANSLATION_MODEL")
             or os.getenv("QWEN_MODEL")
-            or "benepick-qwen35-translation:latest"
+            or "qwen3.5:4b"
         )
         self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
         self.timeout = float(timeout or os.getenv("OLLAMA_TIMEOUT", "300"))
