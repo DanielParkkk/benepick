@@ -105,12 +105,117 @@ _searcher_mode = "uninitialized"
 _reranker = None
 _searcher_lock = threading.Lock()
 _reranker_lock = threading.Lock()
+# ── CUDA 사용 가능 여부 ──
 import torch as _torch
 _USE_CUDA = _torch.cuda.is_available()
 DEFAULT_ENABLE_RERANKER = "1" if _USE_CUDA else "0"
 ENABLE_RERANKER = os.getenv("BENEPICK_ENABLE_RERANKER", DEFAULT_ENABLE_RERANKER) == "1"
 FORCE_BM25_FALLBACK = os.getenv("BENEPICK_FORCE_BM25_FALLBACK", "0") == "1"
 RETRIEVAL_TOP_K = max(5, int(os.getenv("BENEPICK_RETRIEVAL_TOP_K", "15")))
+RETRIEVAL_ALPHA = float(os.getenv("BENEPICK_RETRIEVAL_ALPHA", "0.5"))
+
+_QUERY_VALUE_MAP = {
+    "SINGLE": "1인 가구",
+    "COUPLE": "부부 가구",
+    "MULTI_CHILD": "다자녀 가구",
+    "MULTI_GENERATION": "다세대 가구",
+    "UNEMPLOYED": "미취업",
+    "EMPLOYED": "재직",
+    "SELF_EMPLOYED": "자영업",
+    "STUDENT": "학생",
+    "MONTHLY_RENT": "월세 거주",
+    "JEONSE": "전세 거주",
+    "OWNER": "자가 거주",
+    "LOW_0_50": "중위소득 0~50%",
+    "MID_50_60": "중위소득 50~60%",
+    "MID_60_80": "중위소득 60~80%",
+    "MID_80_100": "중위소득 80~100%",
+    "MID_100_120": "중위소득 100~120%",
+    "MID_120_150": "중위소득 120~150%",
+}
+
+_INTEREST_TAG_MAP = {
+    "housing": "주거",
+    "finance": "금융",
+    "employment": "취업",
+    "medical": "의료",
+    "education": "교육",
+    "care": "돌봄",
+}
+
+
+class BM25FallbackSearcher:
+    """Low-memory fallback searcher used when dense model init fails."""
+
+    def __init__(self) -> None:
+        processed_path = PROJECT_ROOT / "processed"
+        df_welfare = pd.read_csv(processed_path / "chunks.csv")
+        df_gov24 = pd.read_csv(processed_path / "gov24" / "chunks.csv")
+        self.df_chunks = pd.concat([df_welfare, df_gov24], ignore_index=True).set_index("chunk_id", drop=False)
+        self.chunk_ids = self.df_chunks["chunk_id"].tolist()
+
+        tokenized = None
+        cache_path = processed_path / "bm25_cache.pkl"
+        if cache_path.exists():
+            try:
+                with open(cache_path, "rb") as cache_file:
+                    tokenized = pickle.load(cache_file)
+            except Exception as exc:
+                print(f"[Searcher] BM25 cache load failed: {exc}; rebuilding tokens.")
+
+        if not tokenized or len(tokenized) != len(self.chunk_ids):
+            tokenized = [
+                self._simple_tokenize(text)
+                for text in self.df_chunks["text"].fillna("").astype(str).tolist()
+            ]
+
+        self.bm25 = BM25Okapi(tokenized)
+        print(f"[Searcher] BM25 fallback ready ({len(self.chunk_ids)} chunks).")
+
+    @staticmethod
+    def _simple_tokenize(text: str) -> list[str]:
+        tokens = re.findall(r"[0-9A-Za-z가-힣]+", str(text).lower())
+        return [token for token in tokens if len(token) >= 2]
+
+    def search(self, query: str, top_k: int = 5, alpha: float = 0.6, user_region: str = "") -> list:
+        _ = alpha  # keep signature compatible with HybridSearcher.search
+        query_tokens = self._simple_tokenize(query)
+        if not query_tokens:
+            query_tokens = ["복지", "정책"]
+
+        raw_scores = self.bm25.get_scores(query_tokens)
+        max_score = float(raw_scores.max()) if len(raw_scores) else 0.0
+        normalized_scores = (raw_scores / max_score) if max_score > 0 else raw_scores
+
+        region_short = user_region[:2] if user_region else ""
+        final_scores: dict[str, float] = {}
+        for idx, chunk_id in enumerate(self.chunk_ids):
+            score = float(normalized_scores[idx])
+            if region_short:
+                row_region = str(self.df_chunks.loc[chunk_id, "region"])
+                if "전국" in row_region or region_short in row_region:
+                    score += 0.15
+            final_scores[chunk_id] = score
+
+        top_ids = sorted(final_scores, key=final_scores.get, reverse=True)[:top_k]
+        results = []
+        for rank, chunk_id in enumerate(top_ids, 1):
+            row = self.df_chunks.loc[chunk_id]
+            bm25_score = round(final_scores.get(chunk_id, 0.0), 4)
+            results.append({
+                "rank": rank,
+                "chunk_id": chunk_id,
+                "policy_id": str(row.get("policy_id", "")),
+                "policy_name": str(row.get("policy_name", "")),
+                "category": str(row.get("category", "")),
+                "region": str(row.get("region", "")),
+                "source_url": str(row.get("source_url", "")),
+                "score": bm25_score,
+                "vector_score": 0.0,
+                "bm25_score": bm25_score,
+                "evidence_text": str(row.get("text", "")),
+            })
+        return results
 
 
 class BM25FallbackSearcher:
@@ -453,30 +558,99 @@ def generate_answer(query: str, docs: list, lang_code: str = "ko") -> str:
     return response.content
 
 
+def _map_query_value(value: object) -> str:
+    text = str(value).strip()
+    if not text or text.lower() == "nan":
+        return ""
+    return _QUERY_VALUE_MAP.get(text, _QUERY_VALUE_MAP.get(text.upper(), text))
+
+
+def _normalize_interest_tags(tags: object) -> list[str]:
+    if tags is None:
+        return []
+    if isinstance(tags, str):
+        raw = [part.strip() for part in re.split(r"[|,;/]+", tags) if part.strip()]
+    else:
+        raw = [str(part).strip() for part in tags if str(part).strip()]
+    normalized = []
+    seen = set()
+    for tag in raw:
+        mapped = _INTEREST_TAG_MAP.get(tag, _INTEREST_TAG_MAP.get(tag.lower(), tag))
+        key = mapped.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(mapped)
+    return normalized
+
+
+def _sanitize_query_seed(query: str) -> str:
+    text = re.sub(
+        r"\b(region|age|household|employment|housing|income|interest_tags|welfare|policy|recommendation)\b",
+        " ",
+        str(query),
+        flags=re.IGNORECASE,
+    )
+    for token, mapped in _QUERY_VALUE_MAP.items():
+        text = re.sub(rf"\b{re.escape(token)}\b", mapped, text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def build_search_query(query: str, user_condition: dict) -> str:
-    """Build an enriched retrieval query from user profile + preference tags."""
-    if not user_condition:
-        return query
+    """Build a human-readable retrieval query from profile fields."""
+    seed = _sanitize_query_seed(query)
+    parts = [seed] if seed else []
 
-    parts = [query]
-    if user_condition.get("region"):
-        parts.append(str(user_condition["region"]))
-    if user_condition.get("age"):
-        parts.append(f"age {user_condition['age']}")
-    if user_condition.get("income_level"):
-        parts.append(str(user_condition["income_level"]))
-    if user_condition.get("income_band"):
-        parts.append(str(user_condition["income_band"]))
-    if user_condition.get("household_type"):
-        parts.append(str(user_condition["household_type"]))
-    if user_condition.get("employment_status"):
-        parts.append(str(user_condition["employment_status"]))
-    if user_condition.get("interest_tags"):
-        tags = [str(tag).strip() for tag in user_condition["interest_tags"] if str(tag).strip()]
-        if tags:
-            parts.append("interest_tags " + " ".join(tags))
+    if user_condition:
+        region = str(user_condition.get("region", "")).strip()
+        if region:
+            parts.append(region)
 
-    enriched = " ".join(parts)
+        age = user_condition.get("age")
+        if age not in (None, ""):
+            try:
+                age_num = int(float(str(age)))
+                parts.append(f"만 {age_num}세")
+            except ValueError:
+                parts.append(str(age).strip())
+
+        income_level = str(user_condition.get("income_level", "")).strip()
+        if income_level:
+            parts.append(income_level)
+
+        income_band = _map_query_value(user_condition.get("income_band", ""))
+        if income_band:
+            parts.append(income_band)
+
+        household = _map_query_value(user_condition.get("household_type", ""))
+        if household:
+            parts.append(household)
+
+        employment = _map_query_value(user_condition.get("employment_status", ""))
+        if employment:
+            parts.append(employment)
+
+        housing = _map_query_value(user_condition.get("housing_status", ""))
+        if housing:
+            parts.append(housing)
+
+        interest_tags = _normalize_interest_tags(user_condition.get("interest_tags"))
+        if interest_tags:
+            parts.extend(interest_tags)
+
+    deduped_parts = []
+    seen = set()
+    for part in parts:
+        text = re.sub(r"\s+", " ", str(part).strip())
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped_parts.append(text)
+
+    enriched = " ".join(deduped_parts) if deduped_parts else str(query).strip()
     print(f"[Query enrich] '{query}' -> '{enriched}'")
     return enriched
 
@@ -491,7 +665,7 @@ def retrieve_rag_documents(user_query: str, user_condition: dict | None = None) 
     results = get_searcher().search(
         search_query,
         top_k=RETRIEVAL_TOP_K,
-        alpha=0.6,
+        alpha=RETRIEVAL_ALPHA,
         user_region=user_condition.get("region", ""),
     )
     search_time_ms = _elapsed_ms(search_started_at)
