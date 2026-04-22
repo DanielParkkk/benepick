@@ -105,12 +105,12 @@ _searcher_mode = "uninitialized"
 _reranker = None
 _searcher_lock = threading.Lock()
 _reranker_lock = threading.Lock()
-ENABLE_RERANKER = os.getenv("BENEPICK_ENABLE_RERANKER", "0" if os.name == "nt" else "1") == "1"
-FORCE_BM25_FALLBACK = os.getenv("BENEPICK_FORCE_BM25_FALLBACK", "0") == "1"
-
-# ── CUDA 사용 가능 여부 ──
 import torch as _torch
 _USE_CUDA = _torch.cuda.is_available()
+DEFAULT_ENABLE_RERANKER = "1" if _USE_CUDA else "0"
+ENABLE_RERANKER = os.getenv("BENEPICK_ENABLE_RERANKER", DEFAULT_ENABLE_RERANKER) == "1"
+FORCE_BM25_FALLBACK = os.getenv("BENEPICK_FORCE_BM25_FALLBACK", "0") == "1"
+RETRIEVAL_TOP_K = max(5, int(os.getenv("BENEPICK_RETRIEVAL_TOP_K", "15")))
 
 
 class BM25FallbackSearcher:
@@ -262,7 +262,8 @@ def rerank(query: str, results: list, top_k: int = 5) -> list:
         print("[Rerank] disabled by BENEPICK_ENABLE_RERANKER=0 -> use search ranking")
         return sorted(results, key=lambda x: x.get("score", 0), reverse=True)[:top_k]
 
-    texts = [r['evidence_text'] for r in results]
+    # CPU 환경에서 reranker 추론 시간이 길어지지 않도록 입력 후보를 제한한다.
+    texts = [r['evidence_text'] for r in results[:RETRIEVAL_TOP_K]]
     pairs = [[query, text] for text in texts]
     scores = reranker.compute_score(pairs, normalize=True)
 
@@ -297,7 +298,7 @@ def crag_quality_check(query: str, results: list) -> list:
         print("[CRAG] medium quality: retry with relaxed query")
         relaxed = relax_query(query)
         try:
-            results2 = get_searcher().search(relaxed, top_k=25, alpha=0.6)
+            results2 = get_searcher().search(relaxed, top_k=RETRIEVAL_TOP_K, alpha=0.6)
             if not results2:
                 return _fallback(query)
             return rerank(query, results2, top_k=5)
@@ -404,7 +405,7 @@ def _fallback(query: str) -> list:
     fallback_query = get_category_query(query)
     print(f"[CRAG] 폴백 쿼리: '{fallback_query}'")
     try:
-        candidates = get_searcher().search(fallback_query, top_k=25, alpha=0.6)
+        candidates = get_searcher().search(fallback_query, top_k=RETRIEVAL_TOP_K, alpha=0.6)
         if not candidates:
             return []
         return rerank(query, candidates, top_k=5)
@@ -489,7 +490,7 @@ def retrieve_rag_documents(user_query: str, user_condition: dict | None = None) 
     search_started_at = time.perf_counter()
     results = get_searcher().search(
         search_query,
-        top_k=25,
+        top_k=RETRIEVAL_TOP_K,
         alpha=0.6,
         user_region=user_condition.get("region", ""),
     )
