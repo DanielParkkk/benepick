@@ -510,31 +510,9 @@ def enrich_detail_with_ai(
 
 
 def build_rag_condition_query(request: AnalyzeRequest) -> str:
-    household_labels = {
-        "SINGLE": "1인 가구",
-        "COUPLE": "부부 가구",
-        "MULTI_CHILD": "다자녀 가구",
-        "MULTI_GENERATION": "다세대 가구",
-    }
-    employment_labels = {
-        "UNEMPLOYED": "미취업",
-        "EMPLOYED": "재직",
-        "SELF_EMPLOYED": "자영업",
-        "STUDENT": "학생",
-    }
-    housing_labels = {
-        "MONTHLY_RENT": "월세 거주",
-        "JEONSE": "전세 거주",
-        "OWNER": "자가 거주",
-    }
-    income_labels = {
-        "LOW_0_50": "중위소득 0~50%",
-        "MID_50_60": "중위소득 50~60%",
-        "MID_60_80": "중위소득 60~80%",
-        "MID_80_100": "중위소득 80~100%",
-        "MID_100_120": "중위소득 100~120%",
-        "MID_120_150": "중위소득 120~150%",
-    }
+    # 프로필(거주지/나이/가구/소득/고용/주거)은 user_condition dict로 별도 전달되고,
+    # rag.pipeline.build_search_query가 거기서 프로필 토큰을 붙여준다.
+    # 여기서는 의도(관심분야)만 짧게 담아 중복 보강을 피한다.
     interest_labels = {
         "housing": "주거",
         "finance": "금융",
@@ -544,11 +522,6 @@ def build_rag_condition_query(request: AnalyzeRequest) -> str:
         "care": "돌봄",
     }
 
-    household_label = household_labels.get(request.household_type.value, request.household_type.value)
-    employment_label = employment_labels.get(request.employment_status.value, request.employment_status.value)
-    housing_label = housing_labels.get(request.housing_status.value, request.housing_status.value)
-    income_label = income_labels.get(request.income_band.value, request.income_band.value)
-
     interests: list[str] = []
     for tag in request.interest_tags or []:
         cleaned = str(tag).strip()
@@ -556,18 +529,9 @@ def build_rag_condition_query(request: AnalyzeRequest) -> str:
             continue
         interests.append(interest_labels.get(cleaned, interest_labels.get(cleaned.lower(), cleaned)))
 
-    profile_parts = [
-        f"{request.region_name} 거주",
-        f"만 {request.age}세",
-        household_label,
-        employment_label,
-        housing_label,
-        income_label,
-    ]
-    profile_text = " ".join(part for part in profile_parts if part)
-    interests_text = f" 관심분야 {' '.join(interests)}" if interests else ""
-
-    return f"{profile_text}{interests_text} 복지 지원 정책 추천"
+    if interests:
+        return f"{' '.join(interests)} 복지 지원 정책 추천"
+    return "복지 지원 정책 추천"
 
 
 def build_detail_data(db: Session, policy_id: str, *, target_lang: str = "ko") -> PolicyDetailData:

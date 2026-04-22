@@ -117,7 +117,10 @@ class HybridSearcher:
             client = chromadb.PersistentClient(path=str(CHROMA_PATH))
             print(f"Chroma 연결: Persistent ({CHROMA_PATH})")
         self.collection = client.get_collection(COLLECTION_NAME)
-        self._chroma_vector_disabled = False
+        # Railway 등에서 Chroma HNSW 로드가 불안정하면 numpy dense로 바로 고정.
+        self._chroma_vector_disabled = os.environ.get("BENEPICK_DISABLE_CHROMA_VECTOR", "0") == "1"
+        if self._chroma_vector_disabled:
+            print("[Searcher] Chroma vector disabled by env; using numpy dense fallback.")
 
         # 정책 데이터 로드 (복지로 + 정부24)
         df_welfare = pd.read_csv(PROCESSED_PATH / "chunks.csv")
