@@ -200,13 +200,22 @@ const API_BASE = (() => {
   return 'https://web-production-c3410.up.railway.app';
 })();
 let _useBackend = null;
+let _backendCheckedAt = 0;
+const BACKEND_RECHECK_MS = 8000;
 
-async function _checkBackend() {
-  if (_useBackend !== null) return _useBackend;
+async function _checkBackend(force = false) {
+  const now = Date.now();
+  if (!force && _useBackend === true) return true;
+  if (!force && _useBackend === false && (now - _backendCheckedAt) < BACKEND_RECHECK_MS) {
+    return false;
+  }
   try {
-    const r = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(1500) });
+    const r = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(4500) });
     _useBackend = r.ok;
-  } catch { _useBackend = false; }
+  } catch {
+    _useBackend = false;
+  }
+  _backendCheckedAt = Date.now();
   return _useBackend;
 }
 
@@ -345,7 +354,12 @@ function _mapLegacyPath(path, body) {
 // ── apiFetch: FastAPI 우선 → 폴백(내장 로직) ─────────────────
 async function apiFetch(path, options = {}) {
   const body = options.body ? JSON.parse(options.body) : null;
-  const useBackend = await _checkBackend();
+  let useBackend = await _checkBackend();
+  const needsBackend = path === '/analyze' || path.startsWith('/search/');
+  if (!useBackend && needsBackend) {
+    // cold start 직후를 위해 한 번 강제 재확인
+    useBackend = await _checkBackend(true);
+  }
 
   if (useBackend) {
     const mapped = _mapLegacyPath(path, body);
@@ -365,6 +379,9 @@ async function apiFetch(path, options = {}) {
   }
 
   // ── 폴백: 내장 로직 ──
+  if (needsBackend) {
+    console.warn(`[apiFetch] backend unavailable, fallback path used: ${path}`);
+  }
   if (path === '/categories' || path === '/search/categories') {
     return getLocalCategories();
   }
