@@ -706,10 +706,17 @@ function renderDashboard(data) {
   const portTotal = document.querySelector('.portfolio-total .amount');
   if (portTotal && stats.예상수혜액) portTotal.textContent = stats.예상수혜액;
 
-  // 종합요약이 있으면 표시
-  if (summary) {
-    const summaryEls = document.querySelectorAll('.insight-section-label, .cta-text p');
-    summaryEls.forEach(el => { if (el && !el.closest('.inline-ad')) el.textContent = summary; });
+  // 종합요약은 대시보드 전용 박스에만 표시 (사이드 인사이트/CTA 오염 방지)
+  const dashSummaryWrap = document.getElementById('dashboard-rag-summary');
+  const dashSummaryText = document.getElementById('dashboard-rag-summary-text');
+  if (dashSummaryWrap && dashSummaryText) {
+    if (summary) {
+      dashSummaryText.textContent = summary;
+      dashSummaryWrap.hidden = false;
+    } else {
+      dashSummaryText.textContent = '';
+      dashSummaryWrap.hidden = true;
+    }
   }
 }
 
