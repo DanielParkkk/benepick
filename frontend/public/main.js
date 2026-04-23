@@ -225,7 +225,28 @@ function getLocalCategories() {
 }
 
 // ── API 베이스 설정 ───────────────────────────────────────────
-const API_BASE = 'http://localhost:8000';
+const API_BASE = (() => {
+  if (typeof window !== 'undefined') {
+    try {
+      const queryApiBase = new URLSearchParams(window.location.search).get('api_base');
+      const globalApiBase = window.BENEPICK_API_BASE || window.__BENEPICK_API_BASE;
+      const storedApiBase = window.localStorage.getItem('BENEPICK_API_BASE');
+      const explicitApiBase = queryApiBase || globalApiBase || storedApiBase;
+      if (explicitApiBase) {
+        return String(explicitApiBase).replace(/\/+$/, '');
+      }
+
+      const host = window.location.hostname;
+      if (host === 'localhost' || host === '127.0.0.1') {
+        return 'http://localhost:8000';
+      }
+    } catch (_) {
+      // ignore and use default production endpoint
+    }
+  }
+
+  return 'https://web-production-c3410.up.railway.app';
+})();
 let _useBackend = null;
 
 async function _checkBackend() {
