@@ -804,12 +804,13 @@ async function renderAiSummary(detailData) {
 
   const personalSummary = detailData.개인요약 || detailData.personal_summary || '';
   const policyName = detailData.policy_header?.policy_name || '';
+  const rawFromDetail = detailData.원문발췌 || detailData.raw_excerpt || {};
   const raw = POLICY_DB.find(p => p.서비스명 === policyName) || {};
-  const rawTarget  = raw.지원대상   || '';
-  const rawContent = raw.지원내용   || '';
-  const rawMethod  = raw.신청방법   || '';
-  const rawPhone   = raw.전화문의   || '';
-  const rawUrl     = raw.상세조회url || '';
+  const rawTarget  = rawFromDetail.지원대상 || rawFromDetail.target || raw.지원대상 || detailData.description || '';
+  const rawContent = rawFromDetail.지원내용 || rawFromDetail.content || raw.지원내용 || detailData.summary_stats?.benefit_label || '';
+  const rawMethod  = rawFromDetail.신청방법 || rawFromDetail.method || raw.신청방법 || '';
+  const rawPhone   = rawFromDetail.전화문의 || rawFromDetail.phone || raw.전화문의 || '';
+  const rawUrl     = rawFromDetail.상세조회url || rawFromDetail.url || raw.상세조회url || '';
 
   if (!personalSummary && !rawTarget && !rawContent && !rawMethod) {
     box.innerHTML = `<div class="ai-summary-row"><span class="ai-summary-icon">📌</span><span style="font-size:12px;color:var(--gray-500)">원문 데이터가 없습니다. 공식 페이지에서 확인하세요.</span></div>`;
@@ -964,6 +965,13 @@ async function showDetail(policyId) {
         subtitle:            card.subtitle || '',
       },
       개인요약: card.개인요약 || card.personal_summary || '',
+      원문발췌: {
+        지원대상: card.지원대상 || card.description || card.subtitle || '',
+        지원내용: card.지원내용 || card.benefit_summary || card.benefit_label || '',
+        신청방법: card.신청방법 || '',
+        전화문의: card.전화문의 || '',
+        상세조회url: card.상세조회url || card.application_url || '',
+      },
       issues: (card.탈락사유 !== undefined ? card.탈락사유 : null) || card.issues || _buildIssuesFromDB(card.서비스명 || card.policy_name),
       guides: card.해결방법 || card.guides || _buildGuidesFromDB(card.서비스명 || card.policy_name),
       summary_stats: {
