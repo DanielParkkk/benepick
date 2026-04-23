@@ -79,26 +79,9 @@ const POLICY_DB = [
 // ── 검색 상태 ────────────────────────────────────────────────
 const _searchCache = {};
 
-// ── Claude AI 직접 호출 ──────────────────────────────────────
-async function callClaudeSearch(userMessage) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      messages: [{ role: 'user', content: userMessage }]
-    })
-  });
-  if (!res.ok) throw new Error(`Claude API 오류: ${res.status}`);
-  const data = await res.json();
-  const text = data.content.filter(b => b.type === 'text').map(b => b.text).join('');
-  try {
-    const clean = text.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
-    return JSON.parse(clean);
-  } catch(e) {
-    return { raw: text };
-  }
+// ── 외부 LLM 브라우저 직접 호출 차단 ───────────────────────────
+async function callClaudeSearch() {
+  throw new Error('브라우저에서 외부 LLM 직접 호출은 CORS/보안 정책으로 비활성화되어 있습니다.');
 }
 
 // ── 내장 DB 검색 (키워드 기반) ──────────────────────────────
@@ -150,7 +133,7 @@ ${dbSummary}
   }
 }
 
-// ── /analyze 대체: Claude AI 분석 ──────────────────────────
+// ── /analyze 대체: 로컬 분석(백엔드 미가용 시) ───────────────
 async function localAnalyze(payload) {
   const age        = payload.age || payload.나이 || '';
   const region     = payload.region || payload.거주지역 || '';
@@ -163,58 +146,38 @@ async function localAnalyze(payload) {
   const cacheKey = JSON.stringify(payload);
   if (_searchCache[cacheKey]) return _searchCache[cacheKey];
 
-  const dbSummary = POLICY_DB.map((p,i) =>
-    `[${i}] ${p.서비스명} | ${p.서비스분야} | ${p.지원유형} | 대상: ${(p.지원대상||'').substring(0,80)} | 내용: ${(p.지원내용||'').substring(0,60)}`
-  ).join('\n');
-
-  const prompt = `당신은 한국 복지 정책 수급 가능성 분석 전문가입니다.
-
-사용자 정보:
-- 나이: ${age}
-- 지역: ${region}
-- 소득: ${income}
-- 가구 유형: ${family_type}
-- 취업 상태: ${employment}
-- 장애 여부: ${disability}
-${intent_tags.length > 0 ? `- 관심 분야 (우선순위 상향): ${intent_tags.join(', ')}` : ''}
-
-복지 정책 목록:
-${dbSummary}
-
-위 정책들 중 이 사용자에게 가장 적합한 정책 5개를 선정하고, 각 정책의 수급 가능성을 분석하세요.
-${intent_tags.length > 0 ? `\n⚠️ 중요: 사용자가 선택한 관심 분야(${intent_tags.join(', ')})와 관련된 정책을 우선적으로 상위 배치하고, 해당 분야 정책의 수급확률에 +5~10점 가중치를 부여하세요. 단, 자격 요건이 명백히 맞지 않는 경우는 제외합니다.\n` : ''}
-다음 JSON 형식으로만 응답하세요 (다른 텍스트 없이):
-{
-  "recommendation_cards": [
-    {
-      "policy_id": "인덱스번호를_slug으로",
-      "서비스명": "정책명",
-      "icon": "이모지",
-      "subtitle": "한 줄 조건 요약",
-      "benefit_label": "혜택 요약",
-      "source_label": "기관 약칭",
-      "수급확률": 85,
-      "탈락사유": [{"icon":"⚠️","html":"<strong>주의:</strong> 설명"}],
-      "해결방법": [{"icon":"✅","html":"<strong>1단계:</strong> 설명"},{"icon":"📎","html":"<strong>2단계:</strong> 설명"},{"icon":"🚀","html":"<strong>3단계:</strong> 설명"}],
-      "우선순위": 1,
-      "_css": {"card_class":"top","percent_class":"high","progress_color":"green","badge_class":"badge-green","badge_label":"✅ 조건 충족"}
-    }
-  ],
-  "stats": {
-    "해당정책수": 12,
-    "평균확률": 80,
-    "예상수혜액": "월 최대 50만원",
-    "즉시신청가능": 3
-  },
-  "summary": "종합 요약 2~3문장"
-}
-
-수급확률 80 이상 → card_class: top, percent_class: high, progress_color: green, badge_label: ✅ 조건 충족
-수급확률 60~79 → card_class: mid, percent_class: mid, progress_color: blue, badge_label: ⚡ 확인 필요
-수급확률 60 미만 → card_class: low, percent_class: low, progress_color: orange, badge_label: ⚠️ 조건 부족`;
-
-  const result = await callClaudeSearch(prompt);
-  _searchCache[cacheKey] = { dashboard_data: result, query_id: Date.now().toString() };
+  const query = [region, age ? `만 ${age}세` : '', income, family_type, employment, disability, intent_tags.join(' '), '복지 지원 정책 추천']
+    .filter(Boolean)
+    .join(' ');
+  const candidates = await localNaturalSearch(query, 5);
+  const cards = candidates.map((p, index) => {
+    const score = Math.max(55, 92 - index * 7);
+    return {
+      policy_id: (p.서비스명 || '').replace(/[^\w가-힣]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase() || `policy-${index + 1}`,
+      서비스명: p.서비스명 || `추천 정책 ${index + 1}`,
+      icon: p.서비스분야?.includes('주거') ? '🏠' : p.서비스분야?.includes('고용') ? '💼' : p.서비스분야?.includes('교육') ? '🎓' : p.서비스분야?.includes('금융') ? '🏦' : p.서비스분야?.includes('의료') ? '🏥' : '📋',
+      subtitle: `${p.서비스분야 || '복지'} · ${p.지원유형 || '지원'}`,
+      benefit_label: (p.지원내용 || '').substring(0, 40) || '조건 확인 필요',
+      source_label: (p.소관기관명 || 'BenePick').substring(0, 8),
+      수급확률: score,
+      탈락사유: [],
+      해결방법: [],
+      우선순위: index + 1,
+      _css: _scoreToCSS(score),
+    };
+  });
+  const avg = cards.length ? Math.round(cards.reduce((s, c) => s + (c.수급확률 || 0), 0) / cards.length) : 0;
+  const result = {
+    recommendation_cards: cards,
+    stats: {
+      해당정책수: cards.length,
+      평균확률: avg,
+      예상수혜액: cards[0]?.benefit_label || '-',
+      즉시신청가능: cards.filter(c => (c.수급확률 || 0) >= 80).length,
+    },
+    summary: '백엔드 연결이 불안정하여 내장 정책 DB 기준으로 추천했습니다. 네트워크 안정 후 결과를 다시 확인하세요.',
+  };
+  _searchCache[cacheKey] = { dashboard_data: result, cards, query_id: Date.now().toString() };
   return _searchCache[cacheKey];
 }
 
@@ -226,25 +189,14 @@ function getLocalCategories() {
 
 // ── API 베이스 설정 ───────────────────────────────────────────
 const API_BASE = (() => {
-  if (typeof window !== 'undefined') {
-    try {
-      const queryApiBase = new URLSearchParams(window.location.search).get('api_base');
-      const globalApiBase = window.BENEPICK_API_BASE || window.__BENEPICK_API_BASE;
-      const storedApiBase = window.localStorage.getItem('BENEPICK_API_BASE');
-      const explicitApiBase = queryApiBase || globalApiBase || storedApiBase;
-      if (explicitApiBase) {
-        return String(explicitApiBase).replace(/\/+$/, '');
-      }
-
-      const host = window.location.hostname;
-      if (host === 'localhost' || host === '127.0.0.1') {
-        return 'http://localhost:8000';
-      }
-    } catch (_) {
-      // ignore and use default production endpoint
-    }
-  }
-
+  const qp = new URLSearchParams(window.location.search);
+  const fromQuery = qp.get('api_base');
+  const fromGlobal = window.BENEPICK_API_BASE || window.__BENEPICK_API_BASE;
+  const fromStorage = localStorage.getItem('BENEPICK_API_BASE');
+  const raw = fromQuery || fromGlobal || fromStorage;
+  if (raw) return raw.replace(/\/+$/, '');
+  const host = window.location.hostname;
+  if (host === 'localhost' || host === '127.0.0.1') return 'http://localhost:8000';
   return 'https://web-production-c3410.up.railway.app';
 })();
 let _useBackend = null;
@@ -258,22 +210,158 @@ async function _checkBackend() {
   return _useBackend;
 }
 
+function _toIncomeBand(percent) {
+  const p = Number(percent || 55);
+  if (p <= 60) return 'MID_50_60';
+  if (p <= 80) return 'MID_60_80';
+  return 'MID_80_100';
+}
+
+function _toHouseholdType(value) {
+  const v = String(value || '');
+  if (v.includes('1인') || v.includes('단독')) return 'SINGLE';
+  if (v.includes('2인')) return 'TWO_PERSON';
+  return 'MULTI_PERSON';
+}
+
+function _toEmploymentStatus(value) {
+  const v = String(value || '');
+  if (v.includes('자영')) return 'SELF_EMPLOYED';
+  if (v.includes('정규직') || v.includes('비정규직') || v.includes('취업자')) return 'EMPLOYED';
+  return 'UNEMPLOYED';
+}
+
+function _toRegionCode(regionName) {
+  const map = {
+    '서울': 'KR-11', '부산': 'KR-26', '대구': 'KR-27', '인천': 'KR-28', '광주': 'KR-29', '대전': 'KR-30', '울산': 'KR-31', '세종': 'KR-36',
+    '경기': 'KR-41', '강원': 'KR-42', '충북': 'KR-43', '충남': 'KR-44', '전북': 'KR-45', '전남': 'KR-46', '경북': 'KR-47', '경남': 'KR-48', '제주': 'KR-50',
+  };
+  const name = String(regionName || '');
+  for (const [k, v] of Object.entries(map)) {
+    if (name.includes(k)) return v;
+  }
+  return 'KR-11';
+}
+
+function _toAnalyzeRequest(payload = {}) {
+  const regionName = payload.region || payload.region_name || payload.거주지역 || '서울특별시';
+  return {
+    age: Number(payload.age || 27),
+    region_code: _toRegionCode(regionName),
+    region_name: regionName,
+    income_band: _toIncomeBand(payload.income_percent),
+    household_type: _toHouseholdType(payload.household_type || payload.family_type),
+    employment_status: _toEmploymentStatus(payload.employment_status || payload.employment),
+    housing_status: 'MONTHLY_RENT',
+    interest_tags: Array.isArray(payload.intent_tags) ? payload.intent_tags : [],
+  };
+}
+
+function _legacyCardFromPolicy(policy = {}, index = 0) {
+  const score = Number(policy.match_score || 60);
+  const serviceName = policy.title || policy.policy_name || `추천 정책 ${index + 1}`;
+  return {
+    policy_id: policy.policy_id || serviceName.replace(/[^\w가-힣]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase(),
+    policy_name: serviceName,
+    서비스명: serviceName,
+    서비스분야: (policy.badge_items && policy.badge_items[0]) || '',
+    지원유형: policy.apply_status || '',
+    소관기관명: 'BenePick',
+    지원대상: policy.description || '',
+    지원내용: policy.benefit_summary || policy.benefit_amount_label || '',
+    상세조회url: '#',
+    subtitle: policy.description || policy.benefit_summary || '',
+    benefit_label: policy.benefit_amount_label || policy.benefit_summary || '-',
+    source_label: 'BenePick',
+    수급확률: score,
+    score: Math.max(0, Math.min(1, score / 100)),
+    _css: _scoreToCSS(score),
+    탈락사유: [],
+    해결방법: [],
+    우선순위: Number(policy.sort_order || index + 1),
+  };
+}
+
+function _toLegacyAnalyzeResponse(payload = {}) {
+  const data = payload.data || {};
+  const cards = (data.policies || []).map((p, i) => _legacyCardFromPolicy(p, i));
+  const avg = cards.length ? Math.round(cards.reduce((s, c) => s + (c.수급확률 || 0), 0) / cards.length) : 0;
+  return {
+    query_id: payload.meta?.request_id || String(Date.now()),
+    cards,
+    dashboard_data: {
+      recommendation_cards: cards,
+      stats: {
+        해당정책수: cards.length,
+        평균확률: avg,
+        예상수혜액: cards[0]?.benefit_label || '-',
+        즉시신청가능: cards.filter(c => (c.수급확률 || 0) >= 80).length,
+      },
+      summary: data.rag_answer || '추천 정책을 확인하세요.',
+    },
+  };
+}
+
+function _toLegacySearchResponse(payload = {}) {
+  const items = (payload.data?.items || []).map((p, i) => _legacyCardFromPolicy(p, i));
+  return { results: items, count: items.length };
+}
+
+function _mapLegacyPath(path, body) {
+  if (path === '/analyze') {
+    return {
+      url: '/api/v1/eligibility/analyze',
+      method: 'POST',
+      body: _toAnalyzeRequest(body || {}),
+      transform: _toLegacyAnalyzeResponse,
+    };
+  }
+  if (path.startsWith('/search/natural')) {
+    const params = new URLSearchParams(path.split('?')[1] || '');
+    const q = params.get('q') || '';
+    const size = params.get('top_k') || '20';
+    return {
+      url: `/api/v1/policies/search?${new URLSearchParams({ q, size, lang: 'ko' }).toString()}`,
+      method: 'GET',
+      transform: _toLegacySearchResponse,
+    };
+  }
+  if (path.startsWith('/search/keyword')) {
+    const params = new URLSearchParams(path.split('?')[1] || '');
+    const q = params.get('keyword') || '';
+    const size = params.get('limit') || '20';
+    return {
+      url: `/api/v1/policies/search?${new URLSearchParams({ q, size, lang: 'ko' }).toString()}`,
+      method: 'GET',
+      transform: _toLegacySearchResponse,
+    };
+  }
+  if (path.startsWith('/portfolio')) {
+    return { url: '/api/v1/portfolio', method: 'GET' };
+  }
+  return null;
+}
+
 // ── apiFetch: FastAPI 우선 → 폴백(내장 로직) ─────────────────
 async function apiFetch(path, options = {}) {
   const body = options.body ? JSON.parse(options.body) : null;
   const useBackend = await _checkBackend();
 
   if (useBackend) {
-    const res = await fetch(API_BASE + path, {
-      method: options.method || 'GET',
-      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-      ...(options.body ? { body: options.body } : {}),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail?.message || `서버 오류 ${res.status}`);
+    const mapped = _mapLegacyPath(path, body);
+    if (mapped) {
+      const reqBody = mapped.body ? JSON.stringify(mapped.body) : options.body;
+      const res = await fetch(API_BASE + mapped.url, {
+        method: mapped.method || options.method || 'GET',
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+        ...(reqBody ? { body: reqBody } : {}),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload?.error?.message || payload?.detail?.message || `서버 오류 ${res.status}`);
+      }
+      return mapped.transform ? mapped.transform(payload) : payload;
     }
-    return res.json();
   }
 
   // ── 폴백: 내장 로직 ──
@@ -298,6 +386,15 @@ async function apiFetch(path, options = {}) {
   }
   if (path.startsWith('/portfolio')) {
     return { items: _currentPortfolio };
+  }
+  if (path.startsWith('/browse')) {
+    const params = new URLSearchParams(path.split('?')[1] || '');
+    const page = Math.max(1, parseInt(params.get('page') || '1', 10));
+    const perPage = Math.max(1, parseInt(params.get('per_page') || '20', 10));
+    const total = POLICY_DB.length;
+    const totalPages = Math.ceil(total / perPage);
+    const start = (page - 1) * perPage;
+    return { results: POLICY_DB.slice(start, start + perPage), total, total_pages: totalPages };
   }
   throw new Error(`지원하지 않는 경로: ${path}`);
 }
