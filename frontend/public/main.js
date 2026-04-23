@@ -268,7 +268,7 @@ function _toAnalyzeRequest(payload = {}) {
 
 function _legacyCardFromPolicy(policy = {}, index = 0) {
   const score = Number(policy.match_score || 60);
-  const serviceName = policy.title || policy.policy_name || `추천 정책 ${index + 1}`;
+  const serviceName = policy.policy_name || policy.title || `추천 정책 ${index + 1}`;
   return {
     policy_id: policy.policy_id || serviceName.replace(/[^\w가-힣]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase(),
     policy_name: serviceName,
@@ -932,7 +932,22 @@ async function showDetail(policyId) {
   // analysis.html에서 직접 호출된 경우: 이동 없이 바로 렌더링
 
   // 1) AI 분석 후 _currentPortfolio 캐시 우선
-  const card = _currentPortfolio.find(c => c.policy_id === policyId);
+  // 이전 버전(localStorage)의 slug policy_id도 호환되게 이름 기반 fallback 매칭을 허용한다.
+  const targetSlug = String(policyId || '')
+    .replace(/[^\w가-힣]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .toLowerCase();
+  const card = _currentPortfolio.find(c => {
+    if (String(c.policy_id) === String(policyId)) return true;
+    const name = String(c.서비스명 || c.policy_name || '');
+    const nameSlug = name
+      .replace(/[^\w가-힣]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .toLowerCase();
+    return nameSlug && nameSlug === targetSlug;
+  });
   if (card) {
     const pct   = card.수급확률 || card.eligibility_percent || 60;
     const css   = card._css || {};
@@ -1142,16 +1157,20 @@ async function runAnalysis() {
     // FastAPI: data.cards / 폴백: data.dashboard_data.recommendation_cards
     const rawCards = data.cards || data.dashboard_data?.recommendation_cards || [];
 
-    // policy_id를 서비스명 기반 슬러그로 강제 정규화 (AI가 임의 ID 반환해도 일치 보장)
+    // policy_id는 백엔드 원본을 유지하고(상세 API 키),
+    // 누락된 경우에만 서비스명 슬러그를 대체 키로 사용한다.
     _currentPortfolio = rawCards.map(card => {
       const name = card.서비스명 || card.policy_name || '';
       const slug = name.replace(/[^\w가-힣]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase();
       if (!card._css) card._css = _scoreToCSS(card.수급확률 || card.eligibility_percent || 60);
-      return { ...card, policy_id: slug || card.policy_id };
+      return { ...card, policy_id: card.policy_id || slug };
     });
     _savePortfolio(_currentPortfolio); // 페이지 이동 후에도 유지
 
-    renderDashboard(data.dashboard_data);
+    // 렌더링도 캐시와 동일한 id 세트를 사용해 상세 클릭 시 매칭 불일치를 방지한다.
+    const dashboardData = data.dashboard_data || {};
+    dashboardData.recommendation_cards = _currentPortfolio;
+    renderDashboard(dashboardData);
 
     // 진행바 재애니메이션
     document.querySelectorAll('.progress-fill').forEach(bar => {
