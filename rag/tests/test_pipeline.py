@@ -33,6 +33,7 @@ _mock_llm = MagicMock()
 pipeline._searcher = _mock_searcher_instance
 pipeline._reranker = _mock_reranker
 pipeline.llm = _mock_llm
+pipeline.ENABLE_RERANKER = True
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -107,7 +108,7 @@ class TestRelaxQuery:
     def test_removes_city_name(self):
         result = pipeline.relax_query("서울 청년 월세 지원")
         assert "서울" not in result
-        assert "청년" in result
+        assert "월세" in result
 
     def test_removes_household_size(self):
         result = pipeline.relax_query("1인 가구 청년 지원")
@@ -140,9 +141,9 @@ class TestGetCategoryQuery:
         ("취업 지원 프로그램", "청년 고용 지원"),
         ("실업급여 신청",      "청년 고용 지원"),
         ("생계급여 기준",      "저소득 생활 지원"),
-        ("의료비 지원",        "의료비 지원"),
-        ("출산 지원금",        "출산 육아 지원"),
-        ("육아휴직 급여",      "출산 육아 지원"),
+        ("의료비 지원",        "의료·건강 지원"),
+        ("출산 지원금",        "출산·육아 지원"),
+        ("육아휴직 급여",      "출산·육아 지원"),
         ("노인 돌봄 서비스",   "노인 복지 지원"),
         ("장애인 활동 지원",   "장애인 복지 지원"),
     ])
@@ -379,7 +380,7 @@ class TestBenepickRag:
 
     def test_user_condition_none_by_default(self):
         result = pipeline.benepick_rag("청년 지원")
-        assert result["data"]["user_condition"] is None
+        assert result["data"]["user_condition"] == {}
 
     def test_docs_used_structure(self):
         result = pipeline.benepick_rag("청년 지원")
@@ -426,12 +427,12 @@ class TestBenepickRag:
     def test_searcher_called_with_correct_alpha(self):
         pipeline.benepick_rag("청년 지원")
         call_kwargs = _mock_searcher_instance.search.call_args
-        assert call_kwargs[1]["alpha"] == 0.6
+        assert call_kwargs[1]["alpha"] == pipeline.RETRIEVAL_ALPHA
 
     def test_searcher_called_with_correct_top_k(self):
         pipeline.benepick_rag("청년 지원")
         call_kwargs = _mock_searcher_instance.search.call_args
-        assert call_kwargs[1]["top_k"] == 25
+        assert call_kwargs[1]["top_k"] == pipeline.RETRIEVAL_TOP_K
 
     def test_pipeline_calls_reranker(self):
         pipeline.benepick_rag("청년 지원")

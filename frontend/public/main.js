@@ -1,4 +1,4 @@
-﻿const TAB_PAGE_MAP = {
+const TAB_PAGE_MAP = {
   'dashboard':       'index.html',
   'search':          'search.html',
   'detail':          'analysis.html',
@@ -33,6 +33,39 @@ let _currentQueryId = null;
 function _savePortfolio(data) {
   try { localStorage.setItem('benefic_portfolio', JSON.stringify(data)); } catch(e) {}
 }
+
+// 구버전(slug 기반 policy_id) 로컬스토리지 정리 1회 마이그레이션
+function _migrateLegacyDetailStorage() {
+  const MIGRATION_KEY = 'benefic_detail_migration_v2';
+  try {
+    if (localStorage.getItem(MIGRATION_KEY) === '1') return;
+
+    const savedDetailId = localStorage.getItem('benefic_detail_id');
+    if (savedDetailId && !/\d/.test(savedDetailId)) {
+      localStorage.removeItem('benefic_detail_id');
+    }
+
+    const savedPortfolio = localStorage.getItem('benefic_portfolio');
+    if (savedPortfolio) {
+      const arr = JSON.parse(savedPortfolio);
+      if (Array.isArray(arr)) {
+        const hasLegacyId = arr.some(card => {
+          const id = String(card?.policy_id || '');
+          return id && !/\d/.test(id);
+        });
+        if (hasLegacyId) {
+          // 구버전 slug 기반 id가 섞인 캐시는 제거 후 재생성 유도
+          localStorage.removeItem('benefic_portfolio');
+        }
+      }
+    }
+
+    localStorage.setItem(MIGRATION_KEY, '1');
+  } catch (e) {
+    // ignore
+  }
+}
+
 function _scoreToCSS(score) {
   if (score >= 80) return { card_class:'top', percent_class:'high', progress_color:'green', badge_class:'badge-green', badge_label:'✅ 조건 충족' };
   if (score >= 60) return { card_class:'mid', percent_class:'mid', progress_color:'blue', badge_class:'badge-blue', badge_label:'⚡ 확인 필요' };
@@ -50,6 +83,7 @@ function _loadPortfolio() {
     });
   } catch(e) { return []; }
 }
+_migrateLegacyDetailStorage();
 let _currentPortfolio = _loadPortfolio();  // 분석 결과 캐시 (페이지 간 공유)
 
 // ── 한국 공공복지 정책 데이터베이스 (내장) ──────────────────
@@ -314,6 +348,88 @@ function _toLegacyAnalyzeResponse(payload = {}) {
 function _toLegacySearchResponse(payload = {}) {
   const items = (payload.data?.items || []).map((p, i) => _legacyCardFromPolicy(p, i));
   return { results: items, count: items.length };
+}
+
+function _extractBenefitLabelFromText(text) {
+  const source = String(text || '');
+  const wonInMan = source.match(/(최대|월|연)?\s*([\d,]+)\s*만\s*원/);
+  if (wonInMan) return `${wonInMan[1] ? `${wonInMan[1]} ` : ''}${wonInMan[2]}만원`;
+  const won = source.match(/(최대|월|연)?\s*([\d,]+)\s*원/);
+  if (won) return `${won[1] ? `${won[1]} ` : ''}${won[2]}원`;
+  return '-';
+}
+
+function _toLegacyDetailResponse(payload = {}) {
+  const data = payload.data || {};
+  const score = Number(data.match_score || 60);
+  const css = _scoreToCSS(score);
+  const reasons = Array.isArray(data.blocking_reasons) ? data.blocking_reasons.filter(Boolean) : [];
+  const actions = Array.isArray(data.recommended_actions) ? data.recommended_actions.filter(Boolean) : [];
+  const raw = data.source_excerpt || {};
+
+  const issues = reasons.length
+    ? reasons.map(reason => ({ icon: '❌', html: `<strong>${escHtml(reason)}</strong>` }))
+    : [{ icon: '✅', html: '<strong>탈락 사유 없음</strong> — 조건 충족' }];
+
+  const guides = actions.length
+    ? actions.map((action, idx) => ({ icon: idx === 0 ? '✅' : '📎', html: `<strong>${idx + 1}단계:</strong> ${escHtml(action)}` }))
+    : [
+        { icon: '✅', html: '<strong>1단계: AI 분석 실행</strong> — 상단 "수급 가능성 AI 분석 시작하기" 버튼을 누르세요.' },
+        { icon: '🔗', html: '<strong>2단계: 공식 신청 페이지 확인</strong> — 정책 상세 URL에서 신청 조건을 확인하세요.' },
+      ];
+
+  const rawContent = raw.support_content_text || data.description || '';
+  const benefitLabel = _extractBenefitLabelFromText(rawContent);
+
+  return {
+    policy_header: {
+      policy_name: data.title || data.policy_id || '정책 상세',
+      eligibility_percent: score,
+      progress_color: css.progress_color,
+      icon: '📋',
+      percent_class: css.percent_class,
+      badge_label: css.badge_label,
+      badge_class: css.badge_class,
+      subtitle: data.managing_agency || '',
+    },
+    description: data.description || '',
+    personal_summary: data.eligibility_summary || '',
+    raw_excerpt: {
+      target: raw.support_target_text || '',
+      content: raw.support_content_text || '',
+      method: raw.application_method_text || '',
+      phone: raw.contact_text || '',
+      url: raw.official_url || data.application_url || '',
+    },
+    issues,
+    guides,
+    summary_stats: {
+      benefit_label: benefitLabel,
+      processing_period_label: '1~2개월',
+      issue_count: reasons.length || 1,
+      source_label: (data.managing_agency || 'BenePick').slice(0, 10),
+    },
+  };
+}
+
+async function _fetchDetailFromBackend(policyId) {
+  if (!policyId) return null;
+  const useBackend = await _checkBackend();
+  if (!useBackend) return null;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/policies/${encodeURIComponent(policyId)}/detail?lang=ko`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) return null;
+    const payload = await res.json().catch(() => ({}));
+    if (!payload?.data) return null;
+    return _toLegacyDetailResponse(payload);
+  } catch (e) {
+    console.warn('[detail] backend detail fetch failed:', e?.message || e);
+    return null;
+  }
 }
 
 function _mapLegacyPath(path, body) {
@@ -803,14 +919,29 @@ async function renderAiSummary(detailData) {
   if (!box) return;
 
   const personalSummary = detailData.개인요약 || detailData.personal_summary || '';
-  const policyName = detailData.policy_header?.policy_name || '';
   const rawFromDetail = detailData.원문발췌 || detailData.raw_excerpt || {};
-  const raw = POLICY_DB.find(p => p.서비스명 === policyName) || {};
-  const rawTarget  = rawFromDetail.지원대상 || rawFromDetail.target || raw.지원대상 || detailData.description || '';
-  const rawContent = rawFromDetail.지원내용 || rawFromDetail.content || raw.지원내용 || detailData.summary_stats?.benefit_label || '';
-  const rawMethod  = rawFromDetail.신청방법 || rawFromDetail.method || raw.신청방법 || '';
-  const rawPhone   = rawFromDetail.전화문의 || rawFromDetail.phone || raw.전화문의 || '';
-  const rawUrl     = rawFromDetail.상세조회url || rawFromDetail.url || raw.상세조회url || '';
+  const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+  const truncate = (s, max) => {
+    const t = norm(s);
+    if (!t) return '';
+    return t.length > max ? `${t.substring(0, max)}…` : t;
+  };
+
+  let rawTarget = rawFromDetail.지원대상 || rawFromDetail.target || detailData.description || '';
+  let rawContent = rawFromDetail.지원내용 || rawFromDetail.content || '';
+  const rawMethod = rawFromDetail.신청방법 || rawFromDetail.method || '';
+  const rawPhone = rawFromDetail.전화문의 || rawFromDetail.phone || '';
+  const rawUrl = rawFromDetail.상세조회url || rawFromDetail.url || '';
+
+  const normTarget = norm(rawTarget);
+  const normContent = norm(rawContent);
+  if (normTarget && normContent && normTarget === normContent) {
+    // 동일 본문이 중복 출력되는 문제 방지
+    rawContent = '';
+  }
+  if (!norm(rawContent) && detailData.summary_stats?.benefit_label && detailData.summary_stats?.benefit_label !== '-') {
+    rawContent = detailData.summary_stats.benefit_label;
+  }
 
   if (!personalSummary && !rawTarget && !rawContent && !rawMethod) {
     box.innerHTML = `<div class="ai-summary-row"><span class="ai-summary-icon">📌</span><span style="font-size:12px;color:var(--gray-500)">원문 데이터가 없습니다. 공식 페이지에서 확인하세요.</span></div>`;
@@ -819,9 +950,9 @@ async function renderAiSummary(detailData) {
 
   const md2html = s => (s||'').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   const rows = [
-    rawTarget  ? { label:'📌 지원 대상', value: rawTarget.substring(0,120)  + (rawTarget.length>120?'…':'')  } : null,
-    rawContent ? { label:'💰 지원 내용', value: rawContent.substring(0,120) + (rawContent.length>120?'…':'') } : null,
-    rawMethod  ? { label:'📋 신청 방법', value: rawMethod.substring(0,80)   + (rawMethod.length>80?'…':'')   } : null,
+    rawTarget  ? { label:'📌 지원 대상', value: truncate(rawTarget, 260) } : null,
+    rawContent ? { label:'💰 지원 내용', value: truncate(rawContent, 260) } : null,
+    rawMethod  ? { label:'📋 신청 방법', value: truncate(rawMethod, 200) } : null,
   ].filter(Boolean);
 
   const personalHtml = personalSummary
@@ -921,7 +1052,7 @@ const _STATIC_DETAIL = {
   },
 };
 
-// ── showDetail: 캐시 → POLICY_DB → 정적 fallback 순서 ────────
+// ── showDetail: 백엔드 상세 API 단일 소스 우선 → 로컬 폴백 ────────
 async function showDetail(policyId) {
   const _onAnalysisPage = (location.pathname.split('/').pop() || 'index.html') === 'analysis.html';
   if (!_onAnalysisPage) {
@@ -932,23 +1063,15 @@ async function showDetail(policyId) {
   }
   // analysis.html에서 직접 호출된 경우: 이동 없이 바로 렌더링
 
-  // 1) AI 분석 후 _currentPortfolio 캐시 우선
-  // 이전 버전(localStorage)의 slug policy_id도 호환되게 이름 기반 fallback 매칭을 허용한다.
-  const targetSlug = String(policyId || '')
-    .replace(/[^\w가-힣]/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .toLowerCase();
-  const card = _currentPortfolio.find(c => {
-    if (String(c.policy_id) === String(policyId)) return true;
-    const name = String(c.서비스명 || c.policy_name || '');
-    const nameSlug = name
-      .replace(/[^\w가-힣]/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '')
-      .toLowerCase();
-    return nameSlug && nameSlug === targetSlug;
-  });
+  // 1) 백엔드 상세 API 우선 (policy_id 단일 기준)
+  const backendDetail = await _fetchDetailFromBackend(policyId);
+  if (backendDetail) {
+    renderDetail(backendDetail);
+    return;
+  }
+
+  // 2) AI 분석 후 _currentPortfolio 캐시 (정확한 policy_id 일치만 허용)
+  const card = _currentPortfolio.find(c => String(c.policy_id || '') === String(policyId || ''));
   if (card) {
     const pct   = card.수급확률 || card.eligibility_percent || 60;
     const css   = card._css || {};
@@ -972,8 +1095,8 @@ async function showDetail(policyId) {
         전화문의: card.전화문의 || '',
         상세조회url: card.상세조회url || card.application_url || '',
       },
-      issues: (card.탈락사유 !== undefined ? card.탈락사유 : null) || card.issues || _buildIssuesFromDB(card.서비스명 || card.policy_name),
-      guides: card.해결방법 || card.guides || _buildGuidesFromDB(card.서비스명 || card.policy_name),
+      issues: (card.탈락사유 !== undefined ? card.탈락사유 : null) || card.issues || _buildIssuesFromDB(),
+      guides: card.해결방법 || card.guides || _buildGuidesFromDB(),
       summary_stats: {
         benefit_label:           card.benefit_label || '-',
         processing_period_label: '1~2개월',
@@ -984,70 +1107,40 @@ async function showDetail(policyId) {
     return;
   }
 
-  // 2) _STATIC_DETAIL에 있으면 사용
+  // 3) _STATIC_DETAIL에 있으면 사용
   if (_STATIC_DETAIL[policyId]) {
     renderDetail(_STATIC_DETAIL[policyId]);
     return;
   }
 
-  // 3) POLICY_DB 기반 동적 생성
+  // 4) 최소 정적 폴백
   renderDetail(_buildDetailFromDB(policyId));
 }
 
-// POLICY_DB slug 매칭
-function _findPolicyBySlug(policyId) {
-  return POLICY_DB.find(p => {
-    const slug = (p.서비스명||'').replace(/[^\w가-힣]/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').toLowerCase();
-    return slug === policyId || p.서비스명 === policyId;
-  });
+// 상세 API 실패 시 최소 안내용 issue-item 생성
+function _buildIssuesFromDB() {
+  return [{ icon:'ℹ️', html:'<strong>상세 데이터 확인 필요:</strong> 네트워크 또는 서버 지연으로 상세 원문을 불러오지 못했습니다.' }];
 }
 
-// POLICY_DB → issue-item 생성
-function _buildIssuesFromDB(policyName) {
-  const p = POLICY_DB.find(r => r.서비스명 === policyName);
-  if (!p) return [{ icon:'ℹ️', html:'<strong>분석 전:</strong> 상단 분석 버튼을 눌러 AI 수급 가능성 분석을 실행하세요.' }];
-  const issues = [];
-  if (p.선정기준) issues.push({ icon:'📋', html:`<strong>선정 기준:</strong> ${p.선정기준.substring(0,100)}${p.선정기준.length>100?'…':''}` });
-  if (p.지원대상) issues.push({ icon:'👤', html:`<strong>지원 대상:</strong> ${p.지원대상.substring(0,100)}${p.지원대상.length>100?'…':''}` });
-  if (!issues.length) issues.push({ icon:'ℹ️', html:'<strong>분석 전:</strong> 상단 분석 버튼을 눌러 AI 수급 가능성 분석을 실행하세요.' });
-  return issues;
-}
-
-// POLICY_DB → guide-item 생성
-function _buildGuidesFromDB(policyName) {
-  const p = POLICY_DB.find(r => r.서비스명 === policyName);
-  if (!p) return [
+// 상세 API 실패 시 최소 안내용 guide-item 생성
+function _buildGuidesFromDB() {
+  return [
     { icon:'✅', html:'<strong>1단계: AI 분석 실행</strong> — 상단 "수급 가능성 AI 분석 시작하기" 버튼을 누르세요.' },
-    { icon:'🔗', html:'<strong>2단계: 복지로 신청</strong> — <a href="https://www.bokjiro.go.kr" target="_blank" style="color:var(--blue)">bokjiro.go.kr</a>에서 신청하세요.' },
+    { icon:'🔄', html:'<strong>2단계: 상세 새로고침</strong> — 잠시 후 동일 정책의 상세보기를 다시 열어주세요.' },
+    { icon:'🔗', html:'<strong>3단계: 공식 신청 페이지 확인</strong> — <a href="https://www.bokjiro.go.kr" target="_blank" style="color:var(--blue)">bokjiro.go.kr</a>에서 최신 공고를 확인하세요.' },
   ];
-  const guides = [];
-  if (p.신청방법) guides.push({ icon:'📋', html:`<strong>1단계: 신청 방법</strong> — ${p.신청방법}` });
-  if (p.접수기관) guides.push({ icon:'🏛️', html:`<strong>2단계: 접수 기관</strong> — ${p.접수기관}` });
-  if (p.신청기한) guides.push({ icon:'📅', html:`<strong>신청 기한</strong> — ${p.신청기한}` });
-  const url = p.상세조회url || 'https://www.bokjiro.go.kr';
-  guides.push({ icon:'🚀', html:`<strong>${guides.length+1}단계: 온라인 신청</strong> — <a href="${url}" target="_blank" style="color:var(--blue)">${url.replace('https://','').split('/')[0]}</a>에서 신청 ${p.전화문의?'/ 문의: '+p.전화문의:''}` });
-  return guides;
 }
 
-// POLICY_DB → 전체 detailData 생성
+// 상세 API 실패 시 최소 동작 보장용 detailData 생성
 function _buildDetailFromDB(policyId) {
-  const p = _findPolicyBySlug(policyId);
-  const policyName = p?.서비스명 || policyId;
-  const iconMap = {'현금':'💰','이용권':'🎫','서비스':'🛎️','주거':'🏠','고용':'💼','교육':'🎓','의료':'🏥','노인':'👴','장애인':'♿','가족':'👨‍👩‍👧','기초생활':'🛡️','금융':'🏦','창업':'🚀','보건':'💊'};
-  const icon = p ? (iconMap[p.지원유형]||iconMap[p.서비스분야]||'📋') : '📋';
-  let benefitLabel = '-';
-  if (p?.지원내용) {
-    const m = p.지원내용.match(/(최대|월|연)?\s*([\d,]+)\s*만\s*원/);
-    if (m) benefitLabel = `${m[1]?m[1]+' ':''}${m[2]}만원`;
-  }
+  const policyName = String(policyId || '정책 상세');
   return {
-    policy_header: { policy_name: policyName, eligibility_percent: 60, progress_color: 'blue', icon,
+    policy_header: { policy_name: policyName, eligibility_percent: 60, progress_color: 'blue', icon: '📋',
       percent_class: 'mid', badge_label: '⚡ 확인 필요', badge_class: 'badge-blue',
-      subtitle: p ? `${p.서비스분야||''} · ${p.지원유형||''}`.replace(/^ · | · $/,'') : '' },
-    issues:  _buildIssuesFromDB(policyName),
-    guides:  _buildGuidesFromDB(policyName),
-    summary_stats: { benefit_label: benefitLabel, processing_period_label: '1~2개월', issue_count: 1,
-      source_label: p ? (p.소관기관명||'Gov24').substring(0,6) : 'Gov24' },
+      subtitle: '상세 데이터 확인 필요' },
+    issues:  _buildIssuesFromDB(),
+    guides:  _buildGuidesFromDB(),
+    summary_stats: { benefit_label: '-', processing_period_label: '1~2개월', issue_count: 1, source_label: 'BenePick' },
   };
 }
 

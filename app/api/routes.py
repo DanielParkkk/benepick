@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import logging
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_, select
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
@@ -31,7 +28,7 @@ from app.schemas.community import (
     CommunityPostItem,
     CommunityStatsData,
 )
-from app.schemas.detail import PolicyDetailData
+from app.schemas.detail import PolicyDetailData, PolicySourceExcerpt
 from app.schemas.eligibility import AnalyzeRequest, AnalyzeResponseData, ProfileSummary
 from app.schemas.portfolio import PortfolioData, PortfolioItem
 from app.schemas.search import PolicySearchData
@@ -58,68 +55,6 @@ except Exception:  # pragma: no cover - optional AI module
 
 
 router = APIRouter(prefix="/api/v1")
-logger = logging.getLogger(__name__)
-
-
-def build_rag_fallback_policy(reference_id: str, *, index: int) -> PolicySummary:
-    score = max(65, 86 - ((index - 1) * 4))
-    return build_policy_summary(
-        policy_id=reference_id or f"rag-fallback-{index}",
-        title=f"RAG 기반 추천 정책 {index}",
-        description="정책 DB 조회가 일시적으로 불안정하여 RAG 검색 결과를 기준으로 추천했습니다.",
-        match_score=score,
-        apply_status=ApplyStatus.NEEDS_CHECK,
-        benefit_amount=None,
-        benefit_amount_label="공식 공고 확인 필요",
-        benefit_summary="RAG 기반 임시 추천",
-        badge_items=["RAG", "임시추천"],
-        sort_order=index,
-    )
-
-
-def build_rag_only_analysis_response(
-    request: AnalyzeRequest,
-    *,
-    rag_answer: str | None,
-    docs_used: list[str],
-    db_error: Exception | None = None,
-) -> SuccessResponse[AnalyzeResponseData]:
-    if db_error is not None:
-        logger.warning("DB-backed analysis failed; returning RAG-only fallback: %s", db_error)
-
-    policies = [
-        build_rag_fallback_policy(reference_id, index=index)
-        for index, reference_id in enumerate(docs_used[:5], start=1)
-    ]
-    if not policies:
-        policies = [
-            build_policy_summary(
-                policy_id="rag-fallback-1",
-                title="정책 추천 결과를 임시로 제한해 보여드립니다",
-                description="서비스는 정상 동작 중이지만 정책 DB 조회 결과가 없어 기본 추천을 표시합니다.",
-                match_score=70,
-                apply_status=ApplyStatus.NEEDS_CHECK,
-                benefit_amount=None,
-                benefit_amount_label="공식 공고 확인 필요",
-                benefit_summary="임시 추천 결과",
-                badge_items=["임시추천"],
-                sort_order=1,
-            )
-        ]
-
-    analysis_score = round(sum(item.match_score for item in policies) / max(1, len(policies)))
-    return SuccessResponse(
-        data=AnalyzeResponseData(
-            profile_summary=ProfileSummary(analysis_score=analysis_score, tags=get_profile_tags(request)),
-            policies=policies,
-            rag_answer=rag_answer or "정책 DB 조회가 일시적으로 불안정하여 RAG 검색 기반 임시 추천을 표시합니다.",
-            rag_docs_used=docs_used,
-            unmatched_policies=[
-                UnmatchedPolicyItem(reference_id=reference_id, source=infer_source_from_reference(reference_id))
-                for reference_id in docs_used[:5]
-            ],
-        )
-    )
 
 
 def load_policy_links(db: Session, policy_id: str) -> list[PolicyLinkItem]:
@@ -510,9 +445,31 @@ def enrich_detail_with_ai(
 
 
 def build_rag_condition_query(request: AnalyzeRequest) -> str:
-    # 프로필(거주지/나이/가구/소득/고용/주거)은 user_condition dict로 별도 전달되고,
-    # rag.pipeline.build_search_query가 거기서 프로필 토큰을 붙여준다.
-    # 여기서는 의도(관심분야)만 짧게 담아 중복 보강을 피한다.
+    household_labels = {
+        "SINGLE": "1인 가구",
+        "COUPLE": "부부 가구",
+        "MULTI_CHILD": "다자녀 가구",
+        "MULTI_GENERATION": "다세대 가구",
+    }
+    employment_labels = {
+        "UNEMPLOYED": "미취업",
+        "EMPLOYED": "재직",
+        "SELF_EMPLOYED": "자영업",
+        "STUDENT": "학생",
+    }
+    housing_labels = {
+        "MONTHLY_RENT": "월세 거주",
+        "JEONSE": "전세 거주",
+        "OWNER": "자가 거주",
+    }
+    income_labels = {
+        "LOW_0_50": "중위소득 0~50%",
+        "MID_50_60": "중위소득 50~60%",
+        "MID_60_80": "중위소득 60~80%",
+        "MID_80_100": "중위소득 80~100%",
+        "MID_100_120": "중위소득 100~120%",
+        "MID_120_150": "중위소득 120~150%",
+    }
     interest_labels = {
         "housing": "주거",
         "finance": "금융",
@@ -522,6 +479,11 @@ def build_rag_condition_query(request: AnalyzeRequest) -> str:
         "care": "돌봄",
     }
 
+    household_label = household_labels.get(request.household_type.value, request.household_type.value)
+    employment_label = employment_labels.get(request.employment_status.value, request.employment_status.value)
+    housing_label = housing_labels.get(request.housing_status.value, request.housing_status.value)
+    income_label = income_labels.get(request.income_band.value, request.income_band.value)
+
     interests: list[str] = []
     for tag in request.interest_tags or []:
         cleaned = str(tag).strip()
@@ -529,9 +491,18 @@ def build_rag_condition_query(request: AnalyzeRequest) -> str:
             continue
         interests.append(interest_labels.get(cleaned, interest_labels.get(cleaned.lower(), cleaned)))
 
-    if interests:
-        return f"{' '.join(interests)} 복지 지원 정책 추천"
-    return "복지 지원 정책 추천"
+    profile_parts = [
+        f"{request.region_name} 거주",
+        f"만 {request.age}세",
+        household_label,
+        employment_label,
+        housing_label,
+        income_label,
+    ]
+    profile_text = " ".join(part for part in profile_parts if part)
+    interests_text = f" 관심분야 {' '.join(interests)}" if interests else ""
+
+    return f"{profile_text}{interests_text} 복지 지원 정책 추천"
 
 
 def build_detail_data(db: Session, policy_id: str, *, target_lang: str = "ko") -> PolicyDetailData:
@@ -540,6 +511,8 @@ def build_detail_data(db: Session, policy_id: str, *, target_lang: str = "ko") -
         raise HTTPException(status_code=404, detail="Policy not found")
 
     application = db.execute(select(PolicyApplication).where(PolicyApplication.policy_id == policy_id)).scalar_one_or_none()
+    benefit = db.execute(select(PolicyBenefit).where(PolicyBenefit.policy_id == policy_id)).scalar_one_or_none()
+    condition = db.execute(select(PolicyCondition).where(PolicyCondition.policy_id == policy_id)).scalar_one_or_none()
     result = db.execute(select(AnalysisResultState).where(AnalysisResultState.policy_id == policy_id)).scalar_one_or_none()
 
     documents = [
@@ -578,6 +551,22 @@ def build_detail_data(db: Session, policy_id: str, *, target_lang: str = "ko") -
         fallback_actions=recommended_actions,
     )
 
+    support_target_text = (
+        (condition.restricted_target_text if condition else None)
+        or (condition.additional_qualification_text if condition else None)
+        or (condition.income_text if condition else None)
+        or master.summary
+    )
+    support_content_text = (
+        (benefit.benefit_detail_text if benefit else None)
+        or (benefit.benefit_amount_raw_text if benefit else None)
+        or master.description
+        or master.summary
+    )
+    application_method_text = (application.application_method_text if application else None) or (application.application_period_text if application else None)
+    contact_text = master.contact_text or (application.receiving_org_name if application else None)
+    official_url = (application.application_url if application else None) or master.application_url or master.source_url
+
     return PolicyDetailData(
         policy_id=master.policy_id,
         title=master.title,
@@ -595,6 +584,13 @@ def build_detail_data(db: Session, policy_id: str, *, target_lang: str = "ko") -
         application_url=application.application_url if application else master.application_url,
         managing_agency=master.managing_agency,
         last_updated_at=master.updated_at,
+        source_excerpt=PolicySourceExcerpt(
+            support_target_text=support_target_text,
+            support_content_text=support_content_text,
+            application_method_text=application_method_text,
+            contact_text=contact_text,
+            official_url=official_url,
+        ),
     )
 
 
@@ -614,33 +610,24 @@ def analyze(request: AnalyzeRequest, db: Session = Depends(get_db)):
         lang_code="ko",
     )
 
-    try:
-        rag_policies, rag_analyzed, unmatched = resolve_rag_references(
-            db,
-            rag_result.docs_used,
-            request=request,
-            rag_answer=rag_result.answer,
-        )
-        if rag_analyzed:
-            analyzed_items = rag_analyzed
-            policies = rag_policies[:5]
-        else:
-            analyzed_items = analyze_policies(db, request)
-            policies = [
-                build_summary_from_analyzed(item, index=index)
-                for index, item in enumerate(analyzed_items[:5], start=1)
-            ]
-            unmatched = []
+    rag_policies, rag_analyzed, unmatched = resolve_rag_references(
+        db,
+        rag_result.docs_used,
+        request=request,
+        rag_answer=rag_result.answer,
+    )
+    if rag_analyzed:
+        analyzed_items = rag_analyzed
+        policies = rag_policies[:5]
+    else:
+        analyzed_items = analyze_policies(db, request)
+        policies = [
+            build_summary_from_analyzed(item, index=index)
+            for index, item in enumerate(analyzed_items[:5], start=1)
+        ]
+        unmatched = []
 
-        persist_analysis_state(db, request, analyzed_items)
-    except SQLAlchemyError as exc:
-        db.rollback()
-        return build_rag_only_analysis_response(
-            request,
-            rag_answer=rag_result.answer,
-            docs_used=rag_result.docs_used,
-            db_error=exc,
-        )
+    persist_analysis_state(db, request, analyzed_items)
 
     analysis_score = round(sum(item.match_score for item in policies) / max(1, len(policies)))
     rag_answer_text = rag_result.answer
@@ -667,26 +654,10 @@ def search_policies(
 ):
     keyword = q.strip()
     rag_result = search_rag(query=keyword, user_condition={}, lang_code=lang)
-    try:
-        items, _, unmatched = resolve_rag_references(db, rag_result.docs_used[:size])
-        if not items:
-            items = search_policy_summaries(db, keyword, size)
-            unmatched = []
-    except SQLAlchemyError as exc:
-        db.rollback()
-        logger.warning("DB-backed search failed; returning RAG-only fallback: %s", exc)
-        items = [
-            build_rag_fallback_policy(reference_id, index=index)
-            for index, reference_id in enumerate(rag_result.docs_used[:size], start=1)
-        ]
-        unmatched = [
-            UnmatchedPolicyItem(reference_id=reference_id, source=infer_source_from_reference(reference_id))
-            for reference_id in rag_result.docs_used[:size]
-        ]
-
-    rag_answer_text = rag_result.answer
-    if (not rag_answer_text) and rag_result.docs_used:
-        rag_answer_text = "RAG 문서 기반 검색 결과입니다. 요약 생성이 지연되어 결과 목록을 먼저 표시합니다."
+    items, _, unmatched = resolve_rag_references(db, rag_result.docs_used[:size])
+    if not items:
+        items = search_policy_summaries(db, keyword, size)
+        unmatched = []
 
     rag_answer_text = rag_result.answer
     if (not rag_answer_text) and rag_result.docs_used:

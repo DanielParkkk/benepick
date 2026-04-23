@@ -7,10 +7,17 @@ from app.schemas.common import (
     PolicyLawItem,
     PolicyLinkItem,
     PolicyTagItem,
-    PolicySummary,
     RequiredDocumentItem,
     ScoreLevel,
 )
+
+
+class PolicySourceExcerpt(BaseModel):
+    support_target_text: str | None = None
+    support_content_text: str | None = None
+    application_method_text: str | None = None
+    contact_text: str | None = None
+    official_url: str | None = None
 
 
 class PolicyDetailData(BaseModel):
@@ -30,3 +37,4 @@ class PolicyDetailData(BaseModel):
     application_url: str | None = None
     managing_agency: str | None = None
     last_updated_at: datetime | None = None
+    source_excerpt: PolicySourceExcerpt | None = None
