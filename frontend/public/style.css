@@ -598,9 +598,9 @@ nav {
   font-size: 13px;
   line-height: 1.55;
   color: var(--gray-800);
-  white-space: pre-line;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
-  max-height: 190px;
+  max-height: 150px;
   overflow: auto;
 }
 

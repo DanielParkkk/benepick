@@ -236,6 +236,7 @@ const API_BASE = (() => {
 let _useBackend = null;
 let _backendCheckedAt = 0;
 const BACKEND_RECHECK_MS = 8000;
+const STRICT_CORE_BACKEND = true;
 
 async function _checkBackend(force = false) {
   const now = Date.now();
@@ -303,6 +304,7 @@ function _toAnalyzeRequest(payload = {}) {
 function _legacyCardFromPolicy(policy = {}, index = 0) {
   const score = Number(policy.match_score || 60);
   const serviceName = policy.policy_name || policy.title || `추천 정책 ${index + 1}`;
+  const benefitAmount = Number(policy.benefit_amount || 0);
   return {
     policy_id: policy.policy_id || serviceName.replace(/[^\w가-힣]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase(),
     policy_name: serviceName,
@@ -315,6 +317,7 @@ function _legacyCardFromPolicy(policy = {}, index = 0) {
     상세조회url: '#',
     subtitle: policy.description || policy.benefit_summary || '',
     benefit_label: policy.benefit_amount_label || policy.benefit_summary || '-',
+    benefit_amount: Number.isFinite(benefitAmount) && benefitAmount > 0 ? benefitAmount : null,
     source_label: 'BenePick',
     수급확률: score,
     score: Math.max(0, Math.min(1, score / 100)),
@@ -329,6 +332,10 @@ function _toLegacyAnalyzeResponse(payload = {}) {
   const data = payload.data || {};
   const cards = (data.policies || []).map((p, i) => _legacyCardFromPolicy(p, i));
   const avg = cards.length ? Math.round(cards.reduce((s, c) => s + (c.수급확률 || 0), 0) / cards.length) : 0;
+  const amountSum = cards.reduce((sum, card) => sum + (Number(card.benefit_amount) || 0), 0);
+  const estimatedBenefitLabel = amountSum > 0
+    ? `${amountSum.toLocaleString()}원`
+    : (cards[0]?.benefit_label || '-');
   return {
     query_id: payload.meta?.request_id || String(Date.now()),
     cards,
@@ -337,7 +344,7 @@ function _toLegacyAnalyzeResponse(payload = {}) {
       stats: {
         해당정책수: cards.length,
         평균확률: avg,
-        예상수혜액: cards[0]?.benefit_label || '-',
+        예상수혜액: estimatedBenefitLabel,
         즉시신청가능: cards.filter(c => (c.수급확률 || 0) >= 80).length,
       },
       summary: data.rag_answer || '추천 정책을 확인하세요.',
@@ -471,15 +478,18 @@ function _mapLegacyPath(path, body) {
 async function apiFetch(path, options = {}) {
   const body = options.body ? JSON.parse(options.body) : null;
   let useBackend = await _checkBackend();
-  const needsBackend = path === '/analyze' || path.startsWith('/search/');
+  const needsBackend =
+    path === '/analyze' ||
+    path.startsWith('/search/natural') ||
+    path.startsWith('/search/keyword');
   if (!useBackend && needsBackend) {
     // cold start 직후를 위해 한 번 강제 재확인
     useBackend = await _checkBackend(true);
   }
 
-  if (useBackend) {
-    const mapped = _mapLegacyPath(path, body);
-    if (mapped) {
+  const mapped = _mapLegacyPath(path, body);
+  if (mapped && (useBackend || needsBackend)) {
+    try {
       const reqBody = mapped.body ? JSON.stringify(mapped.body) : options.body;
       const res = await fetch(API_BASE + mapped.url, {
         method: mapped.method || options.method || 'GET',
@@ -491,7 +501,16 @@ async function apiFetch(path, options = {}) {
         throw new Error(payload?.error?.message || payload?.detail?.message || `서버 오류 ${res.status}`);
       }
       return mapped.transform ? mapped.transform(payload) : payload;
+    } catch (err) {
+      if (needsBackend && STRICT_CORE_BACKEND) {
+        const msg = err?.message || '백엔드 요청 실패';
+        throw new Error(`백엔드 연결 실패: ${msg}`);
+      }
     }
+  }
+
+  if (needsBackend && STRICT_CORE_BACKEND) {
+    throw new Error('백엔드 연결이 아직 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.');
   }
 
   // ── 폴백: 내장 로직 ──
@@ -755,15 +774,14 @@ function renderDashboard(data) {
   }
 
   // 통계 업데이트
-  const statEl = (sel) => document.querySelector(sel);
-  if (stats.해당정책수) {
-    const valEls = document.querySelectorAll('.stat-item .val');
-    if (valEls[0]) valEls[0].textContent = stats.해당정책수;
-    if (valEls[1]) valEls[1].textContent = (stats.평균확률 || 0) + '%';
-    if (valEls[2]) valEls[2].innerHTML = (stats.예상수혜액 || '-') + '<span style="font-size:14px">원</span>';
-    if (valEls[3]) valEls[3].textContent = stats.즉시신청가능 || 0;
+  const valEls = document.querySelectorAll('.stat-item .val');
+  if (valEls.length >= 4) {
+    if (valEls[0]) valEls[0].textContent = String(stats.해당정책수 ?? recommendation_cards.length ?? 0);
+    if (valEls[1]) valEls[1].textContent = `${String(stats.평균확률 ?? 0)}%`;
+    if (valEls[2]) valEls[2].textContent = String(stats.예상수혜액 ?? '-');
+    if (valEls[3]) valEls[3].textContent = String(stats.즉시신청가능 ?? 0);
     const scoreNum = document.querySelector('.score-num');
-    if (scoreNum) scoreNum.textContent = stats.평균확률 || 0;
+    if (scoreNum) scoreNum.textContent = String(stats.평균확률 ?? 0);
   }
 
   // 정책 카드 목록
