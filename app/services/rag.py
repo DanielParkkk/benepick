@@ -25,6 +25,18 @@ class RagSearchResult:
     docs_used: list[str]
 
 
+def _build_fallback_answer(final_docs: list[dict[str, object]]) -> str | None:
+    policy_names: list[str] = []
+    for item in final_docs[:3]:
+        name = str(item.get("policy_name", "")).strip()
+        if name and name not in policy_names:
+            policy_names.append(name)
+
+    if not policy_names:
+        return None
+
+    joined = ", ".join(policy_names)
+    return f"관련 정책 후보는 {joined} 등입니다. 상세 요약 생성이 지연되어 우선 추천 결과를 먼저 보여드립니다."
 def normalize_reference(item: object) -> str | None:
     if isinstance(item, dict):
         for key in ("policy_id", "source_policy_id", "reference_id", "id"):
@@ -188,6 +200,8 @@ def search_rag(*, query: str, user_condition: dict[str, object], lang_code: str 
             if isinstance(candidate, str) and candidate.strip():
                 answer = candidate
 
+        if not answer:
+            answer = _build_fallback_answer(final_docs)
     except Exception as exc:
         logger.exception("RAG function call failed: %s", exc)
         if not cold_start_mode:

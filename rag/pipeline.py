@@ -135,12 +135,24 @@ _QUERY_VALUE_MAP = {
 }
 
 _INTEREST_TAG_MAP = {
-    "housing": "주거",
-    "finance": "금융",
-    "employment": "취업",
-    "medical": "의료",
-    "education": "교육",
-    "care": "돌봄",
+    "housing": "주거 월세",
+    "주거": "주거 월세",
+    "월세": "주거 월세",
+    "finance": "금융 자산형성",
+    "금융": "금융 자산형성",
+    "자산": "금융 자산형성",
+    "employment": "취업 구직",
+    "고용": "취업 구직",
+    "취업": "취업 구직",
+    "medical": "의료 건강",
+    "보건": "의료 건강",
+    "의료": "의료 건강",
+    "education": "교육 훈련",
+    "교육": "교육 훈련",
+    "훈련": "교육 훈련",
+    "care": "돌봄 육아",
+    "돌봄": "돌봄 육아",
+    "육아": "돌봄 육아",
 }
 
 
@@ -520,14 +532,21 @@ def _fallback(query: str) -> list:
 
 
 # ── LLM 답변 생성 ──
+def _clip_evidence_text(text: object, max_chars: int = 320) -> str:
+    normalized = re.sub(r"\s+", " ", str(text or "")).strip()
+    if len(normalized) <= max_chars:
+        return normalized
+    return normalized[: max_chars - 1].rstrip() + "..."
+
+
 def generate_answer(query: str, docs: list, lang_code: str = "ko") -> str:
     """
     검색된 문서 기반 최종 답변 생성
     lang_code: "ko"/"en"/"vi"/"zh" (팀 규칙 — ISO 639-1)
     """
     context = "\n\n".join([
-        f"[{i+1}] {d['policy_name']}\n{d['evidence_text']}"
-        for i, d in enumerate(docs)
+        f"[{i+1}] {d['policy_name']}\n{_clip_evidence_text(d['evidence_text'])}"
+        for i, d in enumerate(docs[:3])
     ])
 
     lang_prompt = {

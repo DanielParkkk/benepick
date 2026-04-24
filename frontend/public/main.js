@@ -71,6 +71,19 @@ function _scoreToCSS(score) {
   if (score >= 60) return { card_class:'mid', percent_class:'mid', progress_color:'blue', badge_class:'badge-blue', badge_label:'⚡ 확인 필요' };
   return { card_class:'low', percent_class:'low', progress_color:'orange', badge_class:'badge-orange', badge_label:'⚠️ 조건 부족' };
 }
+
+function _buildDashboardSummary(cards = [], fallback = '추천 정책을 확인하세요.') {
+  const names = cards
+    .map(card => card?.서비스명 || card?.policy_name || '')
+    .map(name => String(name || '').trim())
+    .filter(Boolean)
+    .filter((name, index, arr) => arr.indexOf(name) === index)
+    .slice(0, 3);
+
+  if (!names.length) return fallback;
+  return `관련 정책 후보는 ${names.join(', ')} 등입니다. 상세 요약 생성이 지연되어 우선 추천 결과를 먼저 보여드립니다.`;
+}
+
 function _loadPortfolio() {
   try {
     const s = localStorage.getItem('benefic_portfolio');
@@ -209,7 +222,10 @@ async function localAnalyze(payload) {
       예상수혜액: cards[0]?.benefit_label || '-',
       즉시신청가능: cards.filter(c => (c.수급확률 || 0) >= 80).length,
     },
-    summary: '백엔드 연결이 불안정하여 내장 정책 DB 기준으로 추천했습니다. 네트워크 안정 후 결과를 다시 확인하세요.',
+    summary: _buildDashboardSummary(
+      cards,
+      '백엔드 연결이 불안정하여 내장 정책 DB 기준으로 추천했습니다. 네트워크 안정 후 결과를 다시 확인하세요.'
+    ),
   };
   _searchCache[cacheKey] = { dashboard_data: result, cards, query_id: Date.now().toString() };
   return _searchCache[cacheKey];
@@ -347,7 +363,7 @@ function _toLegacyAnalyzeResponse(payload = {}) {
         예상수혜액: estimatedBenefitLabel,
         즉시신청가능: cards.filter(c => (c.수급확률 || 0) >= 80).length,
       },
-      summary: data.rag_answer || '추천 정책을 확인하세요.',
+      summary: data.rag_answer || _buildDashboardSummary(cards),
     },
   };
 }
