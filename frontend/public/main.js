@@ -1915,11 +1915,13 @@ document.addEventListener('click', (e) => {
 });
 
 // ── ONBOARDING GUIDE ──────────────────────────────────────────
+const ONBOARDING_STORAGE_KEY = 'benefic_seen_guide_v20260424';
+
 function initOnboarding() {
   const guideEl = document.getElementById('onboardingGuide');
   if (!guideEl) return;
   let seen;
-  try { seen = localStorage.getItem('benefic_seen_guide'); } catch(e) {}
+  try { seen = localStorage.getItem(ONBOARDING_STORAGE_KEY); } catch(e) {}
   if (!seen) {
     // slight delay so page renders first
     setTimeout(() => guideEl.classList.add('visible'), 400);
@@ -1932,7 +1934,7 @@ function closeOnboarding() {
 }
 
 function closeOnboardingForever() {
-  try { localStorage.setItem('benefic_seen_guide', 'true'); } catch(e) {}
+  try { localStorage.setItem(ONBOARDING_STORAGE_KEY, 'true'); } catch(e) {}
   closeOnboarding();
 }
 
