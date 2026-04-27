@@ -65,6 +65,7 @@ DATE_RE = re.compile(r"\b20\d{2}[.\-/]\d{1,2}[.\-/]\d{1,2}\b")
 AGE_RANGE_RE = re.compile(r"\b\d{1,2}\s*[~\-]\s*\d{1,2}\s*(?:\uC138|years?)?")
 MONEY_RE = re.compile(r"\b\d[\d,]*(?:\.\d+)?\s*(?:\uB9CC\uC6D0|\uCC9C\uC6D0|\uC6D0|KRW|USD)\b", re.IGNORECASE)
 PRESERVE_RE = re.compile(r"\[\[PRESERVE_\d+\]\]")
+SENTENCE_RE = re.compile(r"(?<=[.!?\u3002])\s+|[.\n]+")
 
 NOISE_KEYWORDS = [
     "\uB300\uD45C\uBB38\uC758",
@@ -143,6 +144,29 @@ def strip_noise_lines(text: str) -> str:
     return "\n".join(kept).strip()
 
 
+def _split_sentences(text: str) -> list[str]:
+    return [clean_fact_value(part) for part in SENTENCE_RE.split(str(text or "")) if clean_fact_value(part)]
+
+
+def _first_sentence_with(sentences: list[str], keywords: list[str]) -> str:
+    for sentence in sentences:
+        if any(keyword in sentence for keyword in keywords):
+            return sentence
+    return ""
+
+
+def _infer_policy_name(cleaned_text: str) -> str:
+    sentences = _split_sentences(cleaned_text)
+    first = clean_fact_value(sentences[0] if sentences else cleaned_text)
+    if not first:
+        return ""
+    for marker in ("\uC740", "\uB294", "\uC774", "\uAC00"):
+        idx = first.find(marker)
+        if 2 <= idx <= 40:
+            return clean_fact_value(first[:idx])
+    return first[:60]
+
+
 def clean_fact_value(value: str) -> str:
     value = URL_RE.sub("", str(value or ""))
     value = value.replace("||", ", ")
@@ -193,9 +217,43 @@ def extract_policy_facts(policy_text: str) -> Dict[str, str]:
     for field, candidates in facts.items():
         merged[field] = candidates[0] if candidates else ""
 
+    sentences = _split_sentences(cleaned_text)
+    inferred_name = _infer_policy_name(cleaned_text)
+
     if not merged["policy_name"]:
-        first_line = cleaned_text.splitlines()[0] if cleaned_text else ""
-        merged["policy_name"] = clean_fact_value(first_line)
+        merged["policy_name"] = inferred_name
+    elif inferred_name and len(merged["policy_name"]) > 80:
+        merged["policy_name"] = inferred_name
+
+    if not merged["target"]:
+        merged["target"] = _first_sentence_with(
+            sentences,
+            ["\uC9C0\uC6D0\uB300\uC0C1", "\uC9C0\uC6D0 \uB300\uC0C1", "\uB300\uC0C1", "\uB9CC ", "\uBB34\uC8FC\uD0DD", "\uAC00\uAD6C"],
+        )
+
+    if not merged["benefit"]:
+        benefit_sentence = _first_sentence_with(
+            sentences,
+            ["\uC6D4 \uCD5C\uB300", "\uCD5C\uB300", "\uC9C0\uC6D0\uB0B4\uC6A9", "\uC9C0\uC6D0 \uB0B4\uC6A9", "\uC9C0\uC6D0\uAE08\uC561", "\uD61C\uD0DD"],
+        )
+        if not benefit_sentence:
+            benefit_sentence = next((sentence for sentence in sentences if MONEY_RE.search(sentence) and "\uC9C0\uC6D0" in sentence), "")
+        merged["benefit"] = benefit_sentence
+
+    if not merged["conditions"]:
+        merged["conditions"] = _first_sentence_with(
+            sentences,
+            ["\uC911\uC704\uC18C\uB4DD", "\uC18C\uB4DD"],
+        ) or _first_sentence_with(
+            sentences,
+            ["\uC120\uC815\uAE30\uC900", "\uC120\uC815 \uAE30\uC900", "\uC911\uC704\uC18C\uB4DD", "\uC18C\uB4DD", "\uAE30\uC900", "\uC774\uD558", "\uC774\uC0C1", "\uC790\uACA9"],
+        )
+
+    if not merged["how_to_apply"]:
+        merged["how_to_apply"] = _first_sentence_with(
+            sentences,
+            ["\uC2E0\uCCAD", "\uBCF5\uC9C0\uB85C", "\uC8FC\uBBFC\uC13C\uD130", "\uC628\uB77C\uC778", "\uBC29\uBB38", "\uC811\uC218"],
+        )
 
     if not merged["benefit"]:
         merged["benefit"] = merged["summary"] or merged["description"]
@@ -212,6 +270,8 @@ def extract_policy_facts(policy_text: str) -> Dict[str, str]:
 def choose_better_value(primary: str, secondary: str) -> str:
     primary = clean_fact_value(primary)
     secondary = clean_fact_value(secondary)
+    if primary and secondary and len(primary) > max(120, len(secondary) * 2):
+        return secondary
     if primary and not _looks_too_generic(primary):
         return primary
     return secondary

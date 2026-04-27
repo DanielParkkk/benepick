@@ -6,11 +6,7 @@ import urllib.request
 from typing import Dict, List, Optional
 
 import pandas as pd
-try:
-    from dotenv import load_dotenv
-except ModuleNotFoundError:  # pragma: no cover - optional local convenience
-    def load_dotenv(*args, **kwargs) -> bool:
-        return False
+from dotenv import load_dotenv
 
 from .prompt_builder import PromptBuilder
 from .text_preprocessor import clean_policy_text
@@ -29,7 +25,7 @@ class QwenReasoner:
     ) -> None:
         load_dotenv()
 
-        self.model_name = model_name or os.getenv("QWEN_REASONER_MODEL") or os.getenv("QWEN_MODEL", "qwen3.5:4b")
+        self.model_name = model_name or os.getenv("QWEN_MODEL", "qwen3.5:4b")
         self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
         self.timeout = float(timeout or os.getenv("OLLAMA_TIMEOUT", "300"))
         self.prompt_path = prompt_path or os.getenv("REJECT_GUIDE_PROMPT_PATH", "prompts/prompt_reject_guide.txt")
@@ -118,12 +114,13 @@ class QwenReasoner:
 
     def _heuristic_guides(self, reasons: list[str]) -> list[str]:
         joined = " ".join(reasons)
+        joined_lower = joined.lower()
         guides: list[str] = []
-        if "소득" in joined:
+        if "소득" in joined or "income" in joined_lower or "median" in joined_lower:
             guides.append("소득 산정 기준과 가구원 수 반영 방식이 공고문과 일치하는지 다시 확인해 주세요.")
-        if "연령" in joined or "나이" in joined:
+        if "연령" in joined or "나이" in joined or "age" in joined_lower:
             guides.append("정책의 연령 기준과 신청일 기준 나이를 다시 확인해 주세요.")
-        if "지역" in joined or "거주" in joined:
+        if "지역" in joined or "거주" in joined or "region" in joined_lower or "residence" in joined_lower:
             guides.append("거주 지역 제한과 주민등록 기준일을 다시 확인해 주세요.")
         if "주택" in joined or "무주택" in joined:
             guides.append("무주택 기준과 세대원 주택 보유 여부 반영 방식을 다시 확인해 주세요.")
@@ -134,7 +131,22 @@ class QwenReasoner:
 
     def _fallback_analysis(self, rule_result_text: str) -> Dict[str, List[str]]:
         lines = [line.strip(" -•	") for line in str(rule_result_text or "").splitlines() if line.strip()]
-        reasons = self._dedupe_keep_order(lines) or ["판정 가능한 핵심 조건을 추가로 확인해야 합니다."]
+        normalized_reasons: list[str] = []
+        for line in lines:
+            lower = line.lower()
+            matched = False
+            if "연령" in line or "나이" in line or "age" in lower:
+                normalized_reasons.append("연령 기준을 충족하는지 확인이 필요합니다.")
+                matched = True
+            if "소득" in line or "income" in lower or "median" in lower:
+                normalized_reasons.append("소득 기준을 충족하는지 확인이 필요합니다.")
+                matched = True
+            if "지역" in line or "거주" in line or "region" in lower or "residence" in lower:
+                normalized_reasons.append("거주 지역 기준을 충족하는지 확인이 필요합니다.")
+                matched = True
+            if not matched and re.search(r"[\uAC00-\uD7A3]", line):
+                normalized_reasons.append(line)
+        reasons = self._dedupe_keep_order(normalized_reasons) or ["판정 가능한 핵심 조건을 추가로 확인해야 합니다."]
         guides = self._heuristic_guides(reasons)
         return {"rejection_reasons": reasons, "guides": guides}
 
@@ -145,7 +157,8 @@ class QwenReasoner:
             data = self._call_model_json(messages, schema)
             reasons = self._dedupe_keep_order(data.get("rejection_reasons") or [])
             guides = self._dedupe_keep_order(data.get("guides") or [])
-            if reasons and guides:
+            combined = " ".join(reasons + guides)
+            if reasons and guides and re.search(r"[\uAC00-\uD7A3]", combined):
                 return {"rejection_reasons": reasons, "guides": guides}
         except Exception:
             pass

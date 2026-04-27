@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
@@ -29,7 +28,7 @@ from app.schemas.community import (
     CommunityPostItem,
     CommunityStatsData,
 )
-from app.schemas.detail import PolicyDetailData
+from app.schemas.detail import PolicyDetailData, PolicySourceExcerpt
 from app.schemas.eligibility import AnalyzeRequest, AnalyzeResponseData, ProfileSummary
 from app.schemas.portfolio import PortfolioData, PortfolioItem
 from app.schemas.search import PolicySearchData
@@ -50,24 +49,12 @@ from app.services.community import create_post, get_hot_posts, get_post, get_sta
 from app.services.rag import search_rag
 
 try:
-    from app.services.detail_enrichment_service import SUPPORTED_LANGS, detail_enrichment_service
+    from app.services.ai_enricher import ai_enricher
 except Exception:  # pragma: no cover - optional AI module
-    SUPPORTED_LANGS = {"ko", "en", "zh", "ja", "vi"}
-    detail_enrichment_service = None
+    ai_enricher = None
 
 
 router = APIRouter(prefix="/api/v1")
-
-
-class AISummaryRequest(BaseModel):
-    policy_text: str | None = None
-    text: str | None = None
-
-
-class AITranslateRequest(BaseModel):
-    text: str
-    target_lang: str = "en"
-    policy_text: str | None = None
 
 
 def load_policy_links(db: Session, policy_id: str) -> list[PolicyLinkItem]:
@@ -422,7 +409,7 @@ def enrich_detail_with_ai(
     fallback_reasons = fallback_reasons or []
     fallback_actions = fallback_actions or []
 
-    if detail_enrichment_service is None:
+    if ai_enricher is None:
         return {
             "eligibility_summary": fallback_summary,
             "blocking_reasons": fallback_reasons,
@@ -440,11 +427,10 @@ def enrich_detail_with_ai(
         }
 
     try:
-        enriched = detail_enrichment_service.enrich_detail(
+        enriched = ai_enricher.enrich_detail(
             policy_text=policy_text,
             user_condition_text=user_condition_text,
             target_lang=target_lang,
-            fallback_summary=fallback_summary,
             fallback_reasons=fallback_reasons,
             fallback_actions=fallback_actions,
         )
@@ -458,88 +444,8 @@ def enrich_detail_with_ai(
     }
 
 
-def build_ai_module_trace(target_lang: str) -> list[str]:
-    trace = [
-        "summary_service.py: policy summary",
-        "qwen_reasoner.py: rejection reasons and guide",
-        "output_guard.py: evidence-bounded output guard",
-    ]
-    if target_lang != "ko":
-        trace.append(f"translation_service.py: {target_lang} translation")
-    return trace
-
-
 def build_rag_condition_query(request: AnalyzeRequest) -> str:
-    household_label = request.household_type.value
-    employment_label = request.employment_status.value
-    housing_label = request.housing_status.value
-    income_label = request.income_band.value
-
-    interest_clause = ""
-    if request.interest_tags:
-        selected = ", ".join(tag.strip() for tag in request.interest_tags if tag and tag.strip())
-        if selected:
-            interest_clause = f" interest_tags {selected}"
-
-    return (
-        f"region {request.region_name} age {request.age} household {household_label} "
-        f"employment {employment_label} housing {housing_label} income {income_label}{interest_clause} "
-        f"welfare policy recommendation"
-    )
-
-
-@router.get("/modules/status", response_model=SuccessResponse[dict[str, object]])
-def modules_status():
-    if detail_enrichment_service is None:
-        ai_status = {
-            "ai_ok": False,
-            "ai_error": "detail_enrichment_service import failed",
-            "summary_ok": False,
-            "translation_ok": False,
-            "reasoner_ok": False,
-        }
-    else:
-        ai_status = detail_enrichment_service.status()
-    return SuccessResponse(data=ai_status)
-
-
-@router.post("/ai/summary", response_model=SuccessResponse[dict[str, object]])
-def summarize_policy_text(request: AISummaryRequest):
-    policy_text = (request.policy_text or request.text or "").strip()
-    if not policy_text:
-        raise HTTPException(status_code=400, detail="policy_text is required")
-    if detail_enrichment_service is None or detail_enrichment_service.summary_service is None:
-        raise HTTPException(status_code=503, detail="summary service is unavailable")
-
-    data = detail_enrichment_service.summary_service.summarize_policy(policy_text)
-    guarded = detail_enrichment_service.guard.guard_summary(
-        data,
-        fallback_text=policy_text,
-        expected_lang="ko",
-    )
-    return SuccessResponse(data={**data, **guarded})
-
-
-@router.post("/ai/translate", response_model=SuccessResponse[dict[str, object]])
-def translate_policy_text(request: AITranslateRequest):
-    target_lang = (request.target_lang or "en").strip().lower()
-    if target_lang not in SUPPORTED_LANGS:
-        raise HTTPException(status_code=400, detail=f"Unsupported language: {target_lang}")
-    if detail_enrichment_service is None or detail_enrichment_service.translation_service is None:
-        raise HTTPException(status_code=503, detail="translation service is unavailable")
-
-    policy_text = request.policy_text or request.text
-    data = detail_enrichment_service.translation_service.translate_text(
-        text=request.text,
-        policy_text=policy_text,
-        target_lang=target_lang,
-    )
-    guarded = detail_enrichment_service.guard.guard_translation(
-        data,
-        original_text=request.text,
-        target_lang=target_lang,
-    )
-    return SuccessResponse(data={**data, **guarded})
+    return "복지 지원 정책 추천"
 
 
 def build_detail_data(db: Session, policy_id: str, *, target_lang: str = "ko") -> PolicyDetailData:
@@ -548,6 +454,8 @@ def build_detail_data(db: Session, policy_id: str, *, target_lang: str = "ko") -
         raise HTTPException(status_code=404, detail="Policy not found")
 
     application = db.execute(select(PolicyApplication).where(PolicyApplication.policy_id == policy_id)).scalar_one_or_none()
+    benefit = db.execute(select(PolicyBenefit).where(PolicyBenefit.policy_id == policy_id)).scalar_one_or_none()
+    condition = db.execute(select(PolicyCondition).where(PolicyCondition.policy_id == policy_id)).scalar_one_or_none()
     result = db.execute(select(AnalysisResultState).where(AnalysisResultState.policy_id == policy_id)).scalar_one_or_none()
 
     documents = [
@@ -586,6 +494,22 @@ def build_detail_data(db: Session, policy_id: str, *, target_lang: str = "ko") -
         fallback_actions=recommended_actions,
     )
 
+    support_target_text = (
+        (condition.restricted_target_text if condition else None)
+        or (condition.additional_qualification_text if condition else None)
+        or (condition.income_text if condition else None)
+        or master.summary
+    )
+    support_content_text = (
+        (benefit.benefit_detail_text if benefit else None)
+        or (benefit.benefit_amount_raw_text if benefit else None)
+        or master.description
+        or master.summary
+    )
+    application_method_text = (application.application_method_text if application else None) or (application.application_period_text if application else None)
+    contact_text = master.contact_text or (application.receiving_org_name if application else None)
+    official_url = (application.application_url if application else None) or master.application_url or master.source_url
+
     return PolicyDetailData(
         policy_id=master.policy_id,
         title=master.title,
@@ -603,9 +527,13 @@ def build_detail_data(db: Session, policy_id: str, *, target_lang: str = "ko") -
         application_url=application.application_url if application else master.application_url,
         managing_agency=master.managing_agency,
         last_updated_at=master.updated_at,
-        ai_enabled=bool(detail_enrichment_service and getattr(detail_enrichment_service, "enabled", False)),
-        ai_language=target_lang,
-        ai_module_trace=build_ai_module_trace(target_lang),
+        source_excerpt=PolicySourceExcerpt(
+            support_target_text=support_target_text,
+            support_content_text=support_content_text,
+            application_method_text=application_method_text,
+            contact_text=contact_text,
+            official_url=official_url,
+        ),
     )
 
 
@@ -737,6 +665,26 @@ def get_portfolio(db: Session = Depends(get_db)):
             needs_check_count=sum(1 for item in items if item.apply_status == ApplyStatus.NEEDS_CHECK),
             portfolio_items=items,
         )
+    )
+
+
+@router.get("/modules/status", response_model=SuccessResponse[dict])
+def modules_status():
+    if ai_enricher is None:
+        return SuccessResponse(
+            data={
+                "ai_ok": False,
+                "enabled": False,
+                "init_error": "AI enricher import failed",
+            }
+        )
+
+    status = ai_enricher.status()
+    return SuccessResponse(
+        data={
+            "ai_ok": bool(status.get("enabled")),
+            **status,
+        }
     )
 
 

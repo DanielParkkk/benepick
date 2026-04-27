@@ -7,11 +7,7 @@ import urllib.error
 import urllib.request
 from typing import Dict, List, Optional
 
-try:
-    from dotenv import load_dotenv
-except ModuleNotFoundError:  # pragma: no cover - optional local convenience
-    def load_dotenv(*args, **kwargs) -> bool:
-        return False
+from dotenv import load_dotenv
 
 from .policy_heuristics import (
     assemble_korean_summary,
@@ -41,7 +37,7 @@ class PolicySummaryService:
     ) -> None:
         load_dotenv()
 
-        self.model_name = model_name or os.getenv("QWEN_SUMMARY_MODEL") or os.getenv("QWEN_MODEL", "qwen3.5:4b")
+        self.model_name = model_name or os.getenv("QWEN_MODEL", "qwen3.5:4b")
         self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
         self.timeout = float(timeout or os.getenv("OLLAMA_TIMEOUT", "300"))
         self.prompt_path = prompt_path or os.getenv("SUMMARY_PROMPT_PATH", "prompts/prompt_summary.txt")
@@ -119,6 +115,13 @@ class PolicySummaryService:
                 heuristic_facts.get(field, ""),
             )
             merged[field] = self._clip_text(clean_fact_value(merged[field]))
+
+        for field in ("target", "benefit", "conditions", "how_to_apply"):
+            heuristic_value = self._clip_text(clean_fact_value(heuristic_facts.get(field, "")))
+            if heuristic_value and merged[field] == merged["policy_name"]:
+                merged[field] = heuristic_value
+            if field == "conditions" and heuristic_value and "소득" in heuristic_value and "소득" not in merged[field]:
+                merged[field] = heuristic_value
 
         if not merged["benefit"]:
             merged["benefit"] = self._clip_text(
