@@ -444,6 +444,24 @@ def enrich_detail_with_ai(
     }
 
 
+def translate_detail_text(value: str | None, policy_text: str, target_lang: str) -> str | None:
+    target_lang = (target_lang or "ko").lower().strip()
+    if not value or target_lang == "ko" or ai_enricher is None:
+        return value
+
+    try:
+        translated = ai_enricher.translate_text(
+            value,
+            policy_text,
+            target_lang,
+            generic_fallback=False,
+        )
+    except Exception:
+        return value
+
+    return translated or value
+
+
 def build_rag_condition_query(request: AnalyzeRequest) -> str:
     return "복지 지원 정책 추천"
 
@@ -509,10 +527,19 @@ def build_detail_data(db: Session, policy_id: str, *, target_lang: str = "ko") -
     application_method_text = (application.application_method_text if application else None) or (application.application_period_text if application else None)
     contact_text = master.contact_text or (application.receiving_org_name if application else None)
     official_url = (application.application_url if application else None) or master.application_url or master.source_url
+    title = master.title
+
+    policy_text = build_policy_text(db, policy_id)
+    if target_lang != "ko" and policy_text:
+        title = translate_detail_text(title, policy_text, target_lang) or title
+        description = translate_detail_text(description, policy_text, target_lang) or description
+        support_target_text = translate_detail_text(support_target_text, policy_text, target_lang) or support_target_text
+        support_content_text = translate_detail_text(support_content_text, policy_text, target_lang) or support_content_text
+        application_method_text = translate_detail_text(application_method_text, policy_text, target_lang) or application_method_text
 
     return PolicyDetailData(
         policy_id=master.policy_id,
-        title=master.title,
+        title=title,
         description=description,
         match_score=match_score,
         score_level=score_level,

@@ -33,6 +33,12 @@ class PolicyAIEnricher:
             "vi": "Vui lòng kiểm tra lại điều kiện đủ tư cách và điều kiện đăng ký trong văn bản chính sách gốc.",
         },
     }
+    GENERIC_TRANSLATION_FALLBACKS = {
+        "en": "Translation is temporarily unavailable. Please check the Korean original.",
+        "zh": "暂时无法提供翻译。请确认韩文原文。",
+        "ja": "翻訳を一時的に提供できません。韓国語原文を確認してください。",
+        "vi": "Tạm thời chưa thể cung cấp bản dịch. Vui lòng kiểm tra bản gốc tiếng Hàn.",
+    }
 
     def __init__(self) -> None:
         base_dir = Path(__file__).resolve().parent / "ai_modules"
@@ -150,14 +156,32 @@ class PolicyAIEnricher:
             try:
                 translated.append(self._translate_text(item, policy_text, target_lang))
             except Exception:
-                translated.append(item)
+                translated.append(self.GENERIC_TRANSLATION_FALLBACKS.get(target_lang, item))
         return self._dedupe_keep_order(translated)
 
     def _translate_text(self, text: str, policy_text: str, target_lang: str) -> str:
-        cache_key = self._cache_key("translation", target_lang, text, policy_text)
+        return self.translate_text(text, policy_text, target_lang, generic_fallback=True)
+
+    def translate_text(
+        self,
+        text: str | None,
+        policy_text: str,
+        target_lang: str,
+        *,
+        generic_fallback: bool = True,
+    ) -> str:
+        text = str(text or "").strip()
+        target_lang = (target_lang or "ko").lower().strip()
+        if not text or target_lang == "ko" or not self.enabled:
+            return text
+        if target_lang not in SUPPORTED_LANGS:
+            return text
+
+        fallback_mode = "generic" if generic_fallback else "original"
+        cache_key = self._cache_key("translation", target_lang, fallback_mode, text, policy_text)
         cached = self._cache_get(self._translation_cache, cache_key)
         if cached is not None:
-            return str(cached.get("translated_text", ""))
+            return str(cached.get("translated_text", text))
 
         result = self.translation_service.translate_text(
             text=text,
@@ -169,8 +193,10 @@ class PolicyAIEnricher:
             original_text=text,
             target_lang=target_lang,
         )
+        if guarded.get("is_fallback") and generic_fallback:
+            guarded["translated_text"] = self.GENERIC_TRANSLATION_FALLBACKS.get(target_lang, text)
         self._cache_set(self._translation_cache, cache_key, guarded)
-        return str(guarded["translated_text"])
+        return str(guarded.get("translated_text", text))
 
     def _summarize_policy(self, policy_text: str) -> dict:
         cache_key = self._cache_key("summary", policy_text)
@@ -248,7 +274,7 @@ class PolicyAIEnricher:
             try:
                 summary_text = self._translate_text(summary_text, policy_text, target_lang)
             except Exception:
-                pass
+                summary_text = self.GENERIC_TRANSLATION_FALLBACKS.get(target_lang, summary_text)
 
             reasons = self._translate_list(reasons, policy_text, target_lang)
             actions = self._translate_list(actions, policy_text, target_lang)
