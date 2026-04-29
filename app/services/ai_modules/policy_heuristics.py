@@ -24,6 +24,8 @@ FIELD_KEYWORDS = {
     ],
     "summary": [
         "\uC815\uCC45 \uC694\uC57D",
+        "\uC11C\uBE44\uC2A4\uC694\uC57D",
+        "\uC11C\uBE44\uC2A4 \uC694\uC57D",
         "summary",
     ],
     "description": [
@@ -76,6 +78,43 @@ NOISE_KEYWORDS = [
     "\uC5F0\uB77D\uCC98",
 ]
 
+INLINE_LABELS = [
+    "\uC815\uCC45\uBA85",
+    "\uC815\uCC45 \uC694\uC57D",
+    "\uC11C\uBE44\uC2A4\uC694\uC57D",
+    "\uC11C\uBE44\uC2A4 \uC694\uC57D",
+    "\uC815\uCC45 \uC124\uBA85",
+    "\uC18C\uAD00\uBD80\uCC98",
+    "\uC18C\uAD00\uC870\uC9C1",
+    "\uB300\uD45C\uBB38\uC758",
+    "\uBB38\uC758",
+    "\uC9C0\uC6D0\uB300\uC0C1",
+    "\uC9C0\uC6D0 \uB300\uC0C1",
+    "\uC9C0\uC6D0\uB0B4\uC6A9",
+    "\uC9C0\uC6D0 \uB0B4\uC6A9",
+    "\uC9C0\uC6D0\uAE08\uC561",
+    "\uC9C0\uC6D0 \uAE08\uC561",
+    "\uC2E0\uCCAD\uBC29\uBC95",
+    "\uC2E0\uCCAD \uBC29\uBC95",
+    "\uC2E0\uCCAD\uAE30\uD55C",
+    "\uC2E0\uCCAD \uAE30\uAC04",
+    "\uC81C\uCD9C\uC11C\uB958",
+    "\uC81C\uCD9C \uC11C\uB958",
+    "\uCD94\uAC00\uC790\uACA9",
+    "\uCD94\uAC00 \uC790\uACA9",
+    "\uC81C\uD55C\uB300\uC0C1",
+    "\uC81C\uD55C \uB300\uC0C1",
+    "\uC120\uC815\uAE30\uC900",
+    "\uC120\uC815 \uAE30\uC900",
+    "\uC2EC\uC0AC\uBC29\uBC95",
+    "\uC2EC\uC0AC \uBC29\uBC95",
+]
+INLINE_LABEL_RE = re.compile(
+    r"("
+    + "|".join(re.escape(label) for label in sorted(INLINE_LABELS, key=len, reverse=True))
+    + r")\s*[:\uFF1A]"
+)
+
 
 def normalize_space(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "").strip())
@@ -112,6 +151,22 @@ def _split_labeled_line(line: str) -> tuple[str, str]:
             left, right = line.split(sep, 1)
             return left.strip(), right.strip()
     return "", line.strip()
+
+
+def _extract_inline_labeled_segments(line: str) -> list[tuple[str, str]]:
+    matches = list(INLINE_LABEL_RE.finditer(str(line or "")))
+    if len(matches) <= 1:
+        return []
+
+    segments: list[tuple[str, str]] = []
+    for idx, match in enumerate(matches):
+        start = match.end()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(line)
+        label = match.group(1).strip()
+        value = str(line[start:end]).strip()
+        if value:
+            segments.append((label, value))
+    return segments
 
 
 def _looks_like_noise_line(line: str) -> bool:
@@ -195,6 +250,19 @@ def extract_policy_facts(policy_text: str) -> Dict[str, str]:
     current_field: str | None = None
 
     for line in cleaned_text.splitlines():
+        inline_segments = _extract_inline_labeled_segments(line)
+        if inline_segments:
+            current_field = None
+            for inline_label, inline_value in inline_segments:
+                field = _classify_label(inline_label)
+                if not field:
+                    continue
+                candidate = clean_fact_value(inline_value)
+                if candidate:
+                    facts[field].append(candidate)
+                    current_field = field
+            continue
+
         label, value = _split_labeled_line(line)
         field = _classify_label(label)
         if field:
@@ -240,7 +308,9 @@ def extract_policy_facts(policy_text: str) -> Dict[str, str]:
             benefit_sentence = next((sentence for sentence in sentences if MONEY_RE.search(sentence) and "\uC9C0\uC6D0" in sentence), "")
         merged["benefit"] = benefit_sentence
 
-    if not merged["conditions"]:
+    has_structured_summary = bool(merged["summary"] or merged["description"])
+
+    if not merged["conditions"] and not has_structured_summary:
         merged["conditions"] = _first_sentence_with(
             sentences,
             ["\uC911\uC704\uC18C\uB4DD", "\uC18C\uB4DD"],
@@ -249,20 +319,17 @@ def extract_policy_facts(policy_text: str) -> Dict[str, str]:
             ["\uC120\uC815\uAE30\uC900", "\uC120\uC815 \uAE30\uC900", "\uC911\uC704\uC18C\uB4DD", "\uC18C\uB4DD", "\uAE30\uC900", "\uC774\uD558", "\uC774\uC0C1", "\uC790\uACA9"],
         )
 
-    if not merged["how_to_apply"]:
+    if not merged["how_to_apply"] and not has_structured_summary:
         merged["how_to_apply"] = _first_sentence_with(
             sentences,
             ["\uC2E0\uCCAD", "\uBCF5\uC9C0\uB85C", "\uC8FC\uBBFC\uC13C\uD130", "\uC628\uB77C\uC778", "\uBC29\uBB38", "\uC811\uC218"],
         )
 
     if not merged["benefit"]:
-        merged["benefit"] = merged["summary"] or merged["description"]
+        merged["benefit"] = merged["description"]
 
     if not merged["conditions"] and merged["description"]:
         merged["conditions"] = merged["description"]
-
-    if not merged["target"] and merged["summary"]:
-        merged["target"] = merged["summary"]
 
     return merged
 
@@ -292,22 +359,25 @@ def _looks_too_generic(value: str) -> bool:
 
 def assemble_korean_summary(facts: Dict[str, str]) -> str:
     policy_name = choose_better_value(facts.get("policy_name", ""), "\uD574\uB2F9 \uC815\uCC45")
+    summary = clean_fact_value(facts.get("summary", "") or facts.get("description", ""))
     target = clean_fact_value(facts.get("target", ""))
     benefit = clean_fact_value(facts.get("benefit", ""))
     conditions = clean_fact_value(facts.get("conditions", ""))
     how_to_apply = clean_fact_value(facts.get("how_to_apply", ""))
 
     sentences: list[str] = []
-    if target:
+    if summary and not target:
+        sentences.append(f"{policy_name}\uC740 {summary}")
+    elif target:
         sentences.append(f"{policy_name}\uC758 \uC8FC\uC694 \uB300\uC0C1\uC740 {target}\uC785\uB2C8\uB2E4.")
     else:
         sentences.append(f"{policy_name}\uC5D0 \uB300\uD55C \uC815\uCC45 \uC548\uB0B4\uC785\uB2C8\uB2E4.")
 
-    if benefit:
+    if benefit and benefit not in {summary, target}:
         sentences.append(f"\uC8FC\uC694 \uC9C0\uC6D0 \uB0B4\uC6A9\uC740 {benefit}\uC785\uB2C8\uB2E4.")
-    if conditions:
+    if conditions and conditions not in {summary, target, benefit}:
         sentences.append(f"\uD655\uC778\uD574\uC57C \uD560 \uC8FC\uC694 \uC870\uAC74\uC740 {conditions}\uC785\uB2C8\uB2E4.")
-    if how_to_apply:
+    if how_to_apply and how_to_apply not in {summary, target, benefit, conditions}:
         sentences.append(f"\uC2E0\uCCAD\uC740 {how_to_apply} \uBC29\uC2DD\uC73C\uB85C \uC9C4\uD589\uD569\uB2C8\uB2E4.")
 
     return " ".join(sentences[:4]).strip()

@@ -6,7 +6,11 @@ import urllib.request
 from typing import Dict, List, Optional
 
 import pandas as pd
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except Exception:  # pragma: no cover - optional local convenience dependency
+    def load_dotenv(*args, **kwargs):
+        return False
 
 from .prompt_builder import PromptBuilder
 from .text_preprocessor import clean_policy_text
