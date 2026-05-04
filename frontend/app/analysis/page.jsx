@@ -12,13 +12,21 @@ export default function AnalysisPage() {
   const langSelectorRef = useRef(null);
 
   useEffect(() => {
-    // main.js: analysis.html 진입 시 localStorage에서 policy_id 복원 후 showDetail 호출
+    // main.js가 아직 로딩 전일 수 있으므로, 선택한 policy_id는 showDetail 호출 직전까지 보존한다.
     if (typeof window !== 'undefined') {
-      const pid = (() => { try { return localStorage.getItem('benefic_detail_id'); } catch(e) { return null; } })();
-      if (pid) {
-        try { localStorage.removeItem('benefic_detail_id'); } catch(e) {}
-        if (typeof window.showDetail === 'function') window.showDetail(pid);
-      }
+      let retryCount = 0;
+      const restoreSelectedPolicy = () => {
+        const pid = (() => { try { return localStorage.getItem('benefic_detail_id'); } catch(e) { return null; } })();
+        if (!pid) return;
+        if (typeof window.showDetail === 'function') {
+          try { localStorage.removeItem('benefic_detail_id'); } catch(e) {}
+          window.showDetail(pid);
+          return;
+        }
+        retryCount += 1;
+        if (retryCount <= 20) window.setTimeout(restoreSelectedPolicy, 100);
+      };
+      restoreSelectedPolicy();
 
       // 진행바 애니메이션
       document.querySelectorAll('.progress-fill').forEach((bar, i) => {

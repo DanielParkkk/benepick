@@ -34,32 +34,46 @@ function _savePortfolio(data) {
   try { localStorage.setItem('benefic_portfolio', JSON.stringify(data)); } catch(e) {}
 }
 
+const DETAIL_CARD_KEY = 'benefic_detail_card';
+
+function _findPortfolioCard(policyId) {
+  const id = String(policyId || '');
+  if (!id) return null;
+  return (_currentPortfolio || []).find(card => {
+    const cardId = String(card?.policy_id || '');
+    const cardName = String(card?.서비스명 || card?.policy_name || '');
+    return cardId === id || cardName === id;
+  }) || null;
+}
+
+function _cacheDetailCard(policyId, card) {
+  if (!card) return;
+  try {
+    localStorage.setItem(DETAIL_CARD_KEY, JSON.stringify({ policy_id: policyId, card }));
+  } catch(e) {}
+}
+
+function _loadDetailCard(policyId) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(DETAIL_CARD_KEY) || 'null');
+    const card = saved?.card;
+    if (!card) return null;
+    const id = String(policyId || '');
+    const savedId = String(saved.policy_id || card.policy_id || '');
+    const cardName = String(card.서비스명 || card.policy_name || '');
+    if (!id || savedId === id || cardName === id) return card;
+  } catch(e) {}
+  return null;
+}
+
 // 구버전(slug 기반 policy_id) 로컬스토리지 정리 1회 마이그레이션
 function _migrateLegacyDetailStorage() {
   const MIGRATION_KEY = 'benefic_detail_migration_v2';
   try {
     if (localStorage.getItem(MIGRATION_KEY) === '1') return;
 
-    const savedDetailId = localStorage.getItem('benefic_detail_id');
-    if (savedDetailId && !/\d/.test(savedDetailId)) {
-      localStorage.removeItem('benefic_detail_id');
-    }
-
-    const savedPortfolio = localStorage.getItem('benefic_portfolio');
-    if (savedPortfolio) {
-      const arr = JSON.parse(savedPortfolio);
-      if (Array.isArray(arr)) {
-        const hasLegacyId = arr.some(card => {
-          const id = String(card?.policy_id || '');
-          return id && !/\d/.test(id);
-        });
-        if (hasLegacyId) {
-          // 구버전 slug 기반 id가 섞인 캐시는 제거 후 재생성 유도
-          localStorage.removeItem('benefic_portfolio');
-        }
-      }
-    }
-
+    // 과거에는 숫자가 없는 policy_id를 삭제했지만, 현재 백엔드 policy_id는
+    // 문자열일 수 있으므로 보존한다. 삭제하면 상세 분석 페이지가 기본 샘플로 떨어진다.
     localStorage.setItem(MIGRATION_KEY, '1');
   } catch (e) {
     // ignore
@@ -431,6 +445,47 @@ function _toLegacyDetailResponse(payload = {}) {
       processing_period_label: '1~2개월',
       issue_count: reasons.length || 1,
       source_label: (data.managing_agency || 'BenePick').slice(0, 10),
+    },
+  };
+}
+
+function _detailFromCachedCard(card, policyId) {
+  const pct = card.수급확률 || card.eligibility_percent || card.match_score || 60;
+  const css = card._css || _scoreToCSS(pct);
+  const color = css.progress_color || (pct >= 80 ? 'green' : pct >= 60 ? 'blue' : 'orange');
+  const name = card.서비스명 || card.policy_name || card.title || policyId || '정책 상세';
+  const benefit = card.지원내용 || card.benefit_summary || card.benefit_label || card.benefit_amount_label || '';
+  const target = card.지원대상 || card.description || card.subtitle || '';
+  const method = card.신청방법 || card.application_method || '';
+  const url = card.상세조회url || card.application_url || card.source_url || '';
+
+  return {
+    policy_header: {
+      policy_name: name,
+      eligibility_percent: pct,
+      progress_color: color,
+      icon: card.icon || '📋',
+      percent_class: css.percent_class || 'mid',
+      badge_label: css.badge_label || '',
+      badge_class: css.badge_class || 'badge-blue',
+      subtitle: card.subtitle || card.소관기관명 || card.managing_agency || '',
+    },
+    description: target,
+    개인요약: card.개인요약 || card.personal_summary || '',
+    원문발췌: {
+      지원대상: target,
+      지원내용: benefit,
+      신청방법: method,
+      전화문의: card.전화문의 || card.phone || '',
+      상세조회url: url,
+    },
+    issues: (card.탈락사유 !== undefined ? card.탈락사유 : null) || card.issues || _buildIssuesFromDB(),
+    guides: card.해결방법 || card.guides || _buildGuidesFromDB(),
+    summary_stats: {
+      benefit_label: card.benefit_label || card.benefit_amount_label || _extractBenefitLabelFromText(benefit),
+      processing_period_label: '1~2개월',
+      issue_count: (card.탈락사유 || card.issues || []).length || 1,
+      source_label: card.source_label || card.소관기관명 || card.managing_agency || 'BenePick',
     },
   };
 }
@@ -1091,6 +1146,7 @@ async function showDetail(policyId) {
   const _onAnalysisPage = location.pathname === '/analysis';
   if (!_onAnalysisPage) {
     // 다른 페이지에서 호출: policyId 저장 후 /analysis로 이동
+    _cacheDetailCard(policyId, _findPortfolioCard(policyId));
     try { localStorage.setItem('benefic_detail_id', policyId); } catch(e) {}
     window.location.href = '/analysis';
     return; // analysis 페이지의 load 핸들러가 showDetail을 재호출함
@@ -1105,39 +1161,9 @@ async function showDetail(policyId) {
   }
 
   // 2) AI 분석 후 _currentPortfolio 캐시 (정확한 policy_id 일치만 허용)
-  const card = _currentPortfolio.find(c => String(c.policy_id || '') === String(policyId || ''));
+  const card = _findPortfolioCard(policyId) || _loadDetailCard(policyId);
   if (card) {
-    const pct   = card.수급확률 || card.eligibility_percent || 60;
-    const css   = card._css || {};
-    const color = css.progress_color || (pct>=80?'green':pct>=60?'blue':'orange');
-    renderDetail({
-      policy_header: {
-        policy_name:         card.서비스명 || card.policy_name || policyId,
-        eligibility_percent: pct,
-        progress_color:      color,
-        icon:                card.icon || '📋',
-        percent_class:       css.percent_class || 'mid',
-        badge_label:         css.badge_label || '',
-        badge_class:         css.badge_class || 'badge-blue',
-        subtitle:            card.subtitle || '',
-      },
-      개인요약: card.개인요약 || card.personal_summary || '',
-      원문발췌: {
-        지원대상: card.지원대상 || card.description || card.subtitle || '',
-        지원내용: card.지원내용 || card.benefit_summary || card.benefit_label || '',
-        신청방법: card.신청방법 || '',
-        전화문의: card.전화문의 || '',
-        상세조회url: card.상세조회url || card.application_url || '',
-      },
-      issues: (card.탈락사유 !== undefined ? card.탈락사유 : null) || card.issues || _buildIssuesFromDB(),
-      guides: card.해결방법 || card.guides || _buildGuidesFromDB(),
-      summary_stats: {
-        benefit_label:           card.benefit_label || '-',
-        processing_period_label: '1~2개월',
-        issue_count:             (card.탈락사유||[]).length || 1,
-        source_label:            card.source_label || 'Gov24',
-      },
-    });
+    renderDetail(_detailFromCachedCard(card, policyId));
     return;
   }
 

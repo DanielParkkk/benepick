@@ -61,14 +61,38 @@ export default function PolicyDetailPage() {
     window.startAIAnalysis = function() {
       const policyName = document.getElementById('pd-policy-name')?.textContent;
       try {
-        const POLICY_DB = window.POLICY_DB || [];
-        const idx = POLICY_DB.findIndex(p => p.서비스명 === policyName);
-        if (idx >= 0) localStorage.setItem('benefic_detail_id', String(idx));
+        const currentKey = window.__BENEPICK_CURRENT_POLICY_ID || policyName;
+        if (currentKey) localStorage.setItem('benefic_detail_id', String(currentKey));
+        if (window.__BENEPICK_CURRENT_POLICY_CARD) {
+          localStorage.setItem(
+            'benefic_detail_card',
+            JSON.stringify({ policy_id: currentKey, card: window.__BENEPICK_CURRENT_POLICY_CARD })
+          );
+        }
       } catch(e) {}
       window.location.href = '/analysis';
     };
 
     function renderPolicyDetail(p, related) {
+      const currentPolicyId = p.policy_id || p.정책ID || p.서비스명;
+      window.__BENEPICK_CURRENT_POLICY_ID = currentPolicyId;
+      window.__BENEPICK_CURRENT_POLICY_CARD = {
+        policy_id: currentPolicyId,
+        서비스명: p.서비스명,
+        policy_name: p.서비스명,
+        서비스분야: p.서비스분야,
+        지원유형: p.지원유형,
+        소관기관명: p.소관기관명,
+        지원대상: p.지원대상,
+        지원내용: p.지원내용,
+        신청방법: p.신청방법,
+        전화문의: p.전화문의,
+        상세조회url: p.상세조회url,
+        description: p.지원대상,
+        benefit_summary: p.지원내용,
+        application_url: p.상세조회url,
+        source_label: p.소관기관명 || 'BenePick',
+      };
       const icon = CATEGORY_ICONS[p.서비스분야] || '📋';
       const typeTagClass = TYPE_TAG_CLASS[p.지원유형] || 'pd-tag-gray';
       const defaultDocs = ['신분증 (주민등록증 또는 운전면허증)', '주민등록등본 (3개월 이내 발급)', '소득 증빙서류', '신청서 (해당 기관 양식)'];
@@ -213,32 +237,30 @@ export default function PolicyDetailPage() {
         return;
       }
 
-      // 2) 숫자 ID인 경우에만 백엔드 API 호출
-      const isNumericId = /^\d+$/.test(policyKey);
-      if (isNumericId) {
-        try {
-          const API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
-            ? 'http://localhost:8000' : 'https://web-production-c3410.up.railway.app';
-          const res = await fetch(`${API_BASE}/api/v1/policies/${encodeURIComponent(policyKey)}/detail?lang=ko`);
-          if (res.ok) {
-            const payload = await res.json();
-            const d = payload.data || {};
-            const raw = d.source_excerpt || {};
-            const backendPolicy = {
-              서비스명: d.title || policyKey, 서비스분야: (d.tags && d.tags[0]?.tag_label) || '',
-              지원유형: '', 소관기관명: d.managing_agency || '',
-              지원대상: raw.support_target_text || d.description || '',
-              지원내용: raw.support_content_text || d.description || '',
-              선정기준: '', 신청방법: raw.application_method_text || '',
-              신청기한: '', 전화문의: raw.contact_text || '',
-              상세조회url: raw.official_url || d.application_url || '',
-            };
-            renderPolicyDetail(backendPolicy, []);
-            setTimeout(() => { const nameEl = document.getElementById('pd-policy-name'); if (nameEl) saveRecentlyViewed(nameEl.textContent); }, 200);
-            return;
-          }
-        } catch(e) {}
-      }
+      // 2) 백엔드 policy_id는 문자열일 수 있으므로 숫자 여부와 무관하게 상세 API를 조회
+      try {
+        const API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+          ? 'http://localhost:8000' : 'https://web-production-c3410.up.railway.app';
+        const res = await fetch(`${API_BASE}/api/v1/policies/${encodeURIComponent(policyKey)}/detail?lang=ko`);
+        if (res.ok) {
+          const payload = await res.json();
+          const d = payload.data || {};
+          const raw = d.source_excerpt || {};
+          const backendPolicy = {
+            policy_id: d.policy_id || policyKey,
+            서비스명: d.title || policyKey, 서비스분야: (d.tags && d.tags[0]?.tag_label) || '',
+            지원유형: '', 소관기관명: d.managing_agency || '',
+            지원대상: raw.support_target_text || d.description || '',
+            지원내용: raw.support_content_text || d.description || '',
+            선정기준: '', 신청방법: raw.application_method_text || '',
+            신청기한: '', 전화문의: raw.contact_text || '',
+            상세조회url: raw.official_url || d.application_url || '',
+          };
+          renderPolicyDetail(backendPolicy, []);
+          setTimeout(() => { const nameEl = document.getElementById('pd-policy-name'); if (nameEl) saveRecentlyViewed(nameEl.textContent); }, 200);
+          return;
+        }
+      } catch(e) {}
 
       showNotFound();
     }
