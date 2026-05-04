@@ -396,6 +396,98 @@ function _extractBenefitLabelFromText(text) {
   return '-';
 }
 
+let _policyExcerptFallbackPromise = null;
+
+async function _loadPolicyExcerptFallback() {
+  if (!_policyExcerptFallbackPromise) {
+    _policyExcerptFallbackPromise = fetch('/policy-excerpts-min.json', { cache: 'force-cache' })
+      .then(res => res.ok ? res.json() : null)
+      .catch(() => null);
+  }
+  return _policyExcerptFallbackPromise;
+}
+
+function _humanizeApplicationMethod(method, org, contact, url) {
+  const parts = [];
+  const normalized = String(method || '')
+    .replace(/\|\|/g, '\n')
+    .replace(/기타 온라인신청/g, '온라인 신청')
+    .replace(/온라인신청/g, '온라인 신청')
+    .replace(/방문신청/g, '방문 신청')
+    .replace(/\s*\n+\s*/g, ' / ')
+    .trim();
+  if (normalized) parts.push(normalized);
+  if (org && !parts.join(' ').includes(org)) parts.push(`접수·문의 기관: ${org}`);
+  if (contact && !parts.join(' ').includes(contact)) parts.push(`문의: ${contact}`);
+  if (url) parts.push('정확한 접수 가능 여부는 공식 페이지에서 확인');
+  return parts.join(' / ');
+}
+
+async function _applyPolicyExcerptFallback(data, requestedPolicyId) {
+  if (!data) return data;
+  const raw = data.source_excerpt || {};
+  const fallbackIndex = await _loadPolicyExcerptFallback();
+  const fallback = fallbackIndex?.by_id?.[requestedPolicyId]
+    || fallbackIndex?.by_id?.[data.policy_id]
+    || fallbackIndex?.by_title?.[data.title]
+    || null;
+  if (!fallback) return data;
+
+  const officialUrl = raw.official_url || data.application_url || '';
+  data.source_excerpt = {
+    ...raw,
+    application_period_text: raw.application_period_text || fallback.period || '',
+    application_method_text: _humanizeApplicationMethod(
+      raw.application_method_text || fallback.method,
+      fallback.org,
+      fallback.contact || raw.contact_text,
+      officialUrl,
+    ) || raw.application_method_text || fallback.method || '',
+    contact_text: raw.contact_text || fallback.contact || '',
+    official_url: officialUrl,
+  };
+  return data;
+}
+
+async function _detailFromExcerptFallback(policyId) {
+  const fallbackIndex = await _loadPolicyExcerptFallback();
+  const fallback = fallbackIndex?.by_id?.[policyId] || fallbackIndex?.by_title?.[policyId] || null;
+  if (!fallback) return null;
+  const method = _humanizeApplicationMethod(fallback.method, fallback.org, fallback.contact, fallback.url);
+  return {
+    policy_header: {
+      policy_name: fallback.title || policyId || '정책 상세',
+      eligibility_percent: 60,
+      progress_color: 'blue',
+      icon: '📋',
+      percent_class: 'mid',
+      badge_label: '⚡ 확인 필요',
+      badge_class: 'badge-blue',
+      subtitle: fallback.org || '',
+    },
+    description: '',
+    personal_summary: '상세 원문 일부를 기준으로 신청 정보를 복원했습니다. 자격 조건은 공식 페이지에서 최종 확인하세요.',
+    raw_excerpt: {
+      period: fallback.period || '',
+      method: method || fallback.method || '',
+      phone: fallback.contact || '',
+      url: fallback.url || '',
+    },
+    issues: _buildIssuesFromDB(),
+    guides: [
+      { icon:'✅', html:'<strong>1단계: 신청 기간 확인</strong> — 원문 발췌의 신청 기간을 먼저 확인하세요.' },
+      { icon:'📋', html:'<strong>2단계: 신청 방법 확인</strong> — 접수 기관과 문의처를 확인한 뒤 신청 가능 여부를 점검하세요.' },
+      { icon:'🔗', html:'<strong>3단계: 공식 페이지 확인</strong> — 정책 상세 URL에서 최신 공고와 접수 상태를 확인하세요.' },
+    ],
+    summary_stats: {
+      benefit_label: '-',
+      processing_period_label: '확인 필요',
+      issue_count: 1,
+      source_label: fallback.org || 'BenePick',
+    },
+  };
+}
+
 function _toLegacyDetailResponse(payload = {}) {
   const data = payload.data || {};
   const score = Number(data.match_score || 60);
@@ -513,6 +605,7 @@ async function _fetchDetailFromBackend(policyId) {
     if (!res.ok) return null;
     const payload = await res.json().catch(() => ({}));
     if (!payload?.data) return null;
+    await _applyPolicyExcerptFallback(payload.data, policyId);
     return _toLegacyDetailResponse(payload);
   } catch (e) {
     console.warn('[detail] backend detail fetch failed:', e?.message || e);
@@ -1208,7 +1301,14 @@ async function showDetail(policyId) {
     return;
   }
 
-  // 4) 최소 정적 폴백
+  // 4) 원문 최소 인덱스 폴백
+  const excerptFallback = await _detailFromExcerptFallback(policyId);
+  if (excerptFallback) {
+    renderDetail(excerptFallback);
+    return;
+  }
+
+  // 5) 최소 정적 폴백
   renderDetail(_buildDetailFromDB(policyId));
 }
 
