@@ -123,6 +123,7 @@ export default function PolicyDetailPage() {
             </div>
           </div>
           <div class="pd-hero-actions">
+            <button class="pd-ai-btn" onclick="startAIAnalysis()">✨ 나의 수급 가능성 분석하기</button>
             <button class="pd-scrap-btn" id="pdScrapBtn" onclick="toggleScrap('${p.서비스명}')">☆ 스크랩</button>
             <button class="pd-share-btn" onclick="sharePolicy('${p.서비스명}')">📤 공유하기</button>
           </div>
@@ -319,6 +320,8 @@ export default function PolicyDetailPage() {
         .pd-contact-card:hover{border-color:var(--blue);background:var(--blue-light)}
         .pd-contact-label{font-size:10px;color:var(--gray-400);font-weight:600;letter-spacing:.3px}
         .pd-contact-value{font-size:13px;color:var(--gray-900);font-weight:700}
+        .pd-ai-btn{padding:9px 16px;border:none;border-radius:8px;background:linear-gradient(135deg,var(--blue),var(--green));font-size:13px;font-weight:800;font-family:'Pretendard',sans-serif;color:#fff;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all .15s;flex:1.4;justify-content:center;box-shadow:0 8px 20px rgba(49,130,246,.18)}
+        .pd-ai-btn:hover{transform:translateY(-1px);box-shadow:0 12px 24px rgba(49,130,246,.24)}
         .pd-scrap-btn{padding:9px 16px;border:1.5px solid var(--gray-200);border-radius:8px;background:var(--white);font-size:13px;font-weight:700;font-family:'Pretendard',sans-serif;color:var(--gray-500);cursor:pointer;display:flex;align-items:center;gap:5px;transition:all .15s;flex:1;justify-content:center}
         .pd-scrap-btn:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-light)}
         .pd-scrap-btn.active{border-color:#FBBF24;color:#D97706;background:#FFFBEB}
