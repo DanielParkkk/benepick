@@ -28,7 +28,7 @@ const TRANSLATIONS = {
     tab_community: '커뮤니티',
     tab_profile: '프로필',
     nav_search: '정책 검색',
-    nav_analysis: '상세 분석',
+    nav_analysis: '탈락 이유',
     nav_portfolio: '포트폴리오',
     nav_apply: '신청 보조',
     nav_user_profile: '개인정보 수정',
