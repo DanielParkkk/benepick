@@ -1042,7 +1042,7 @@ async function renderAiSummary(detailData) {
   const rawCriteria = rawFromDetail.선정기준 || rawFromDetail.criteria || '';
   const rawRestriction = rawFromDetail.제한대상 || rawFromDetail.restriction || '';
   let rawContent = rawFromDetail.지원내용 || rawFromDetail.content || '';
-  const rawPeriod = rawFromDetail.신청기간 || rawFromDetail.period || '';
+  const rawPeriod = rawFromDetail.신청기간 || rawFromDetail.period || '원문에 신청 기간이 명시되어 있지 않습니다. 공식 페이지에서 접수 가능 여부를 확인하세요.';
   const rawMethod = rawFromDetail.신청방법 || rawFromDetail.method || '';
   const rawDocuments = rawFromDetail.필요서류 || rawFromDetail.documents || '';
   const rawScreening = rawFromDetail.심사방법 || rawFromDetail.screening || '';
