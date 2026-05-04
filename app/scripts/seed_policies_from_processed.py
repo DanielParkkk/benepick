@@ -37,6 +37,8 @@ SECTION_LABELS = {
     "선정기준",
     "신청방법",
     "신청기한",
+    "신청기간",
+    "접수기간",
     "소관기관",
     "전화문의",
     "소관부처",
@@ -398,7 +400,11 @@ def build_records(row: pd.Series) -> dict[str, object]:
     operating_agency = sections.get("소관조직")
     contact_text = first_present(sections.get("전화문의"), sections.get("대표문의"))
     application_method = sections.get("신청방법")
-    application_period = sections.get("신청기한")
+    application_period = first_present(
+        sections.get("신청기한"),
+        sections.get("신청기간"),
+        sections.get("접수기간"),
+    )
     online_apply = infer_online_apply(application_method, source_url)
     amount = extract_amount_value(benefit_text)
     age_min, age_max = infer_age_range(f"{support_target or ''}\n{selection_text or ''}")

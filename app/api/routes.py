@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import csv
+from functools import lru_cache
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -56,6 +60,155 @@ except Exception:  # pragma: no cover - optional AI module
 
 
 router = APIRouter(prefix="/api/v1")
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROCESSED_CHUNK_PATHS = (
+    PROJECT_ROOT / "processed" / "gov24" / "chunks.csv",
+    PROJECT_ROOT / "processed" / "chunks.csv",
+)
+PROCESSED_SECTION_LABELS = {
+    "정책명",
+    "서비스분야",
+    "지원대상",
+    "지원내용",
+    "선정기준",
+    "신청방법",
+    "신청기한",
+    "신청기간",
+    "접수기간",
+    "소관기관",
+    "소관부처",
+    "대표문의",
+    "전화문의",
+    "구비서류",
+    "제출서류",
+    "신청서류",
+}
+
+
+def _clean_excerpt_text(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text or text.lower() == "nan":
+        return None
+    text = text.replace("||", "\n")
+    text = "\n".join(line.strip() for line in text.splitlines() if line.strip())
+    return text or None
+
+
+def _first_text(*values: object) -> str | None:
+    for value in values:
+        cleaned = _clean_excerpt_text(value)
+        if cleaned:
+            return cleaned
+    return None
+
+
+def _parse_processed_sections(text: str | None) -> dict[str, str]:
+    if not text:
+        return {}
+    sections: dict[str, list[str]] = {}
+    current_label: str | None = None
+    for raw_line in str(text).replace("\r", "\n").splitlines():
+        line = raw_line.rstrip()
+        if not line.strip():
+            continue
+        if ":" in line:
+            label, value = line.split(":", 1)
+            label = label.strip()
+            if label in PROCESSED_SECTION_LABELS:
+                current_label = label
+                sections.setdefault(label, [])
+                if value.strip():
+                    sections[label].append(value.strip())
+                continue
+        if current_label:
+            sections[current_label].append(line.strip())
+    return {key: _clean_excerpt_text("\n".join(values)) or "" for key, values in sections.items()}
+
+
+@lru_cache(maxsize=1)
+def _processed_section_index() -> dict[str, dict[str, str]]:
+    index: dict[str, dict[str, str]] = {}
+    for path in PROCESSED_CHUNK_PATHS:
+        if not path.exists():
+            continue
+        source = "gov24" if "gov24" in path.parts else "bokjiro"
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
+            for row in csv.DictReader(handle):
+                policy_id = _clean_excerpt_text(row.get("policy_id"))
+                if not policy_id:
+                    continue
+                sections = _parse_processed_sections(row.get("text"))
+                if not sections:
+                    continue
+                index.setdefault(policy_id, sections)
+                index.setdefault(f"{source}__{policy_id}", sections)
+    return index
+
+
+def _processed_sections_for(master: PolicyMaster) -> dict[str, str]:
+    index = _processed_section_index()
+    for key in (
+        master.policy_id,
+        master.source_policy_id,
+        f"{master.source}__{master.source_policy_id}",
+    ):
+        if key and key in index:
+            return index[key]
+    return {}
+
+
+def _readable_application_method(
+    method_text: str | None,
+    *,
+    application: PolicyApplication | None,
+    master: PolicyMaster,
+    official_url: str | None,
+    org_text: str | None = None,
+    contact_text: str | None = None,
+) -> str | None:
+    method = _clean_excerpt_text(method_text)
+    if method:
+        method = (
+            method.replace("기타 온라인신청", "온라인 신청")
+            .replace("온라인신청", "온라인 신청")
+            .replace("방문신청", "방문 신청")
+        )
+
+    parts: list[str] = []
+    if method:
+        parts.append(method)
+
+    org = _first_text(
+        org_text,
+        application.receiving_org_name if application else None,
+        master.operating_agency,
+        master.managing_agency,
+    )
+    if org and org not in " ".join(parts):
+        parts.append(f"접수·문의 기관: {org}")
+
+    contact = _first_text(contact_text, master.contact_text)
+    if contact and contact not in " ".join(parts):
+        parts.append(f"문의: {contact}")
+
+    if official_url:
+        parts.append("정확한 접수 가능 여부는 공식 페이지에서 확인")
+
+    return " / ".join(parts) if parts else None
+
+
+def _readable_application_period(period_text: str | None) -> str | None:
+    period = _clean_excerpt_text(period_text)
+    if not period:
+        return None
+    return (
+        period.replace("상시신청", "상시 신청")
+        .replace("상시접수", "상시 접수")
+        .replace("별도 공고", "별도 공고 확인")
+    )
 
 
 def load_policy_links(db: Session, policy_id: str) -> list[PolicyLinkItem]:
@@ -520,34 +673,77 @@ def build_detail_data(db: Session, policy_id: str, *, target_lang: str = "ko") -
         fallback_actions=recommended_actions,
     )
 
-    support_target_text = master.summary or master.description
+    processed_sections = _processed_sections_for(master)
+    support_target_text = _first_text(
+        processed_sections.get("지원대상"),
+        master.summary,
+        master.description,
+    )
     selection_criteria_text = " / ".join(
         part
         for part in [
+            processed_sections.get("선정기준"),
             (condition.income_text if condition else None),
             (condition.additional_qualification_text if condition else None),
         ]
         if part
     ) or None
     support_content_text = (
-        (benefit.benefit_detail_text if benefit else None)
+        processed_sections.get("지원내용")
+        or (benefit.benefit_detail_text if benefit else None)
         or (benefit.benefit_amount_raw_text if benefit else None)
         or master.description
         or master.summary
     )
+    application_period_raw = _first_text(
+        (application.application_period_text if application else None),
+        processed_sections.get("신청기한"),
+        processed_sections.get("신청기간"),
+        processed_sections.get("접수기간"),
+    )
     application_period_text = " / ".join(
         part
         for part in [
-            (application.application_period_text if application else None),
+            _readable_application_period(application_period_raw),
             (f"사업기간: {application.business_period_start_date or ''}~{application.business_period_end_date or ''}".strip() if application and (application.business_period_start_date or application.business_period_end_date) else None),
             (application.business_period_etc_text if application else None),
         ]
         if part
     ) or None
-    application_method_text = (application.application_method_text if application else None) or application_period_text
-    required_documents_text = ", ".join(doc.document_name for doc in documents if doc.document_name) or None
-    contact_text = master.contact_text or (application.receiving_org_name if application else None)
+    application_method_raw = _first_text(
+        (application.application_method_text if application else None),
+        processed_sections.get("신청방법"),
+    )
     official_url = (application.application_url if application else None) or master.application_url or master.source_url
+    contact_text = _first_text(
+        master.contact_text,
+        processed_sections.get("전화문의"),
+        processed_sections.get("대표문의"),
+        application.receiving_org_name if application else None,
+    )
+    org_text = _first_text(
+        application.receiving_org_name if application else None,
+        processed_sections.get("소관기관"),
+        processed_sections.get("소관부처"),
+        master.operating_agency,
+        master.managing_agency,
+    )
+    application_method_text = _readable_application_method(
+        application_method_raw,
+        application=application,
+        master=master,
+        official_url=official_url,
+        org_text=org_text,
+        contact_text=contact_text,
+    )
+    required_documents_text = (
+        ", ".join(doc.document_name for doc in documents if doc.document_name)
+        or _first_text(
+            processed_sections.get("구비서류"),
+            processed_sections.get("제출서류"),
+            processed_sections.get("신청서류"),
+        )
+    )
 
     return PolicyDetailData(
         policy_id=master.policy_id,
