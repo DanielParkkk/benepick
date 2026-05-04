@@ -37,7 +37,7 @@ export default function DashboardPage() {
     });
 
     // 온보딩 초기화
-    const ONBOARDING_KEY = 'benefic_seen_guide_v20260424';
+    const ONBOARDING_KEY = 'benefic_seen_guide_v20260504';
     try {
       const seen = localStorage.getItem(ONBOARDING_KEY);
       if (!seen) {
@@ -90,7 +90,7 @@ export default function DashboardPage() {
 
   const closeOnboarding = () => setOnboardingVisible(false);
   const closeOnboardingForever = () => {
-    try { localStorage.setItem('benefic_seen_guide_v20260424', 'true'); } catch (e) {}
+    try { localStorage.setItem('benefic_seen_guide_v20260504', 'true'); } catch (e) {}
     setOnboardingVisible(false);
   };
 

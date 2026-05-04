@@ -433,8 +433,13 @@ function _toLegacyDetailResponse(payload = {}) {
     personal_summary: data.eligibility_summary || '',
     raw_excerpt: {
       target: raw.support_target_text || '',
+      criteria: raw.selection_criteria_text || '',
+      restriction: raw.restricted_target_text || '',
       content: raw.support_content_text || '',
+      period: raw.application_period_text || '',
       method: raw.application_method_text || '',
+      documents: raw.required_documents_text || '',
+      screening: raw.screening_method_text || '',
       phone: raw.contact_text || '',
       url: raw.official_url || data.application_url || '',
     },
@@ -474,8 +479,13 @@ function _detailFromCachedCard(card, policyId) {
     개인요약: card.개인요약 || card.personal_summary || '',
     원문발췌: {
       지원대상: target,
+      선정기준: card.선정기준 || card.criteria || '',
+      제한대상: card.제한대상 || card.restriction || '',
       지원내용: benefit,
+      신청기간: card.신청기한 || card.application_period || '',
       신청방법: method,
+      필요서류: card.필요서류 || card.required_documents || '',
+      심사방법: card.심사방법 || card.screening || '',
       전화문의: card.전화문의 || card.phone || '',
       상세조회url: url,
     },
@@ -1029,8 +1039,13 @@ async function renderAiSummary(detailData) {
   };
 
   let rawTarget = rawFromDetail.지원대상 || rawFromDetail.target || detailData.description || '';
+  const rawCriteria = rawFromDetail.선정기준 || rawFromDetail.criteria || '';
+  const rawRestriction = rawFromDetail.제한대상 || rawFromDetail.restriction || '';
   let rawContent = rawFromDetail.지원내용 || rawFromDetail.content || '';
+  const rawPeriod = rawFromDetail.신청기간 || rawFromDetail.period || '';
   const rawMethod = rawFromDetail.신청방법 || rawFromDetail.method || '';
+  const rawDocuments = rawFromDetail.필요서류 || rawFromDetail.documents || '';
+  const rawScreening = rawFromDetail.심사방법 || rawFromDetail.screening || '';
   const rawPhone = rawFromDetail.전화문의 || rawFromDetail.phone || '';
   const rawUrl = rawFromDetail.상세조회url || rawFromDetail.url || '';
 
@@ -1054,9 +1069,14 @@ async function renderAiSummary(detailData) {
 
   const md2html = s => (s||'').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   const rows = [
-    rawTarget  ? { label:'📌 지원 대상', value: truncate(rawTarget, 260) } : null,
-    rawContent ? { label:'💰 지원 내용', value: truncate(rawContent, 260) } : null,
-    rawMethod  ? { label:'📋 신청 방법', value: truncate(rawMethod, 200) } : null,
+    rawTarget      ? { label:'📌 지원 대상', value: truncate(rawTarget, 720) } : null,
+    rawCriteria    ? { label:'✅ 선정/소득 기준', value: truncate(rawCriteria, 520) } : null,
+    rawRestriction ? { label:'🚫 제한 대상', value: truncate(rawRestriction, 420) } : null,
+    rawContent     ? { label:'💰 지원 내용', value: truncate(rawContent, 720) } : null,
+    rawPeriod      ? { label:'🗓️ 신청 기간', value: truncate(rawPeriod, 360) } : null,
+    rawMethod      ? { label:'📋 신청 방법', value: truncate(rawMethod, 420) } : null,
+    rawDocuments   ? { label:'📎 필요 서류', value: truncate(rawDocuments, 420) } : null,
+    rawScreening   ? { label:'🔎 심사 방법', value: truncate(rawScreening, 320) } : null,
   ].filter(Boolean);
 
   const personalHtml = personalSummary && rows.length === 0

@@ -41,6 +41,7 @@ from app.services.analysis import (
     get_analysis_results,
     get_policy_documents,
     get_profile_tags,
+    is_policy_expired,
     persist_analysis_state,
     score_level_from_score,
 )
@@ -293,18 +294,25 @@ def search_policy_summaries(db: Session, keyword: str, size: int) -> list[Policy
             )
         )
         .order_by(PolicyMaster.policy_id.asc())
-        .limit(size)
+        .limit(size * 4)
     ).scalars().all()
 
-    return [
-        build_summary_from_master(
-            db,
-            master,
-            index=index,
-            fallback_score=max(55, 82 - ((index - 1) * 3)),
+    items: list[PolicySummary] = []
+    for master in masters:
+        application = db.execute(select(PolicyApplication).where(PolicyApplication.policy_id == master.policy_id)).scalar_one_or_none()
+        if is_policy_expired(application):
+            continue
+        items.append(
+            build_summary_from_master(
+                db,
+                master,
+                index=len(items) + 1,
+                fallback_score=max(55, 82 - (len(items) * 3)),
+            )
         )
-        for index, master in enumerate(masters, start=1)
-    ]
+        if len(items) >= size:
+            break
+    return items
 
 
 def resolve_rag_references(
@@ -337,6 +345,10 @@ def resolve_rag_references(
             continue
 
         if master.policy_id in seen_policy_ids:
+            continue
+
+        application = db.execute(select(PolicyApplication).where(PolicyApplication.policy_id == master.policy_id)).scalar_one_or_none()
+        if is_policy_expired(application):
             continue
 
         analyzed_item = build_analyzed_from_master(
@@ -508,19 +520,32 @@ def build_detail_data(db: Session, policy_id: str, *, target_lang: str = "ko") -
         fallback_actions=recommended_actions,
     )
 
-    support_target_text = (
-        (condition.restricted_target_text if condition else None)
-        or (condition.additional_qualification_text if condition else None)
-        or (condition.income_text if condition else None)
-        or master.summary
-    )
+    support_target_text = master.summary or master.description
+    selection_criteria_text = " / ".join(
+        part
+        for part in [
+            (condition.income_text if condition else None),
+            (condition.additional_qualification_text if condition else None),
+        ]
+        if part
+    ) or None
     support_content_text = (
         (benefit.benefit_detail_text if benefit else None)
         or (benefit.benefit_amount_raw_text if benefit else None)
         or master.description
         or master.summary
     )
-    application_method_text = (application.application_method_text if application else None) or (application.application_period_text if application else None)
+    application_period_text = " / ".join(
+        part
+        for part in [
+            (application.application_period_text if application else None),
+            (f"사업기간: {application.business_period_start_date or ''}~{application.business_period_end_date or ''}".strip() if application and (application.business_period_start_date or application.business_period_end_date) else None),
+            (application.business_period_etc_text if application else None),
+        ]
+        if part
+    ) or None
+    application_method_text = (application.application_method_text if application else None) or application_period_text
+    required_documents_text = ", ".join(doc.document_name for doc in documents if doc.document_name) or None
     contact_text = master.contact_text or (application.receiving_org_name if application else None)
     official_url = (application.application_url if application else None) or master.application_url or master.source_url
 
@@ -543,8 +568,14 @@ def build_detail_data(db: Session, policy_id: str, *, target_lang: str = "ko") -
         last_updated_at=master.updated_at,
         source_excerpt=PolicySourceExcerpt(
             support_target_text=support_target_text,
+            selection_criteria_text=selection_criteria_text,
+            additional_qualification_text=(condition.additional_qualification_text if condition else None),
+            restricted_target_text=(condition.restricted_target_text if condition else None),
             support_content_text=support_content_text,
+            application_period_text=application_period_text,
             application_method_text=application_method_text,
+            required_documents_text=required_documents_text,
+            screening_method_text=(application.screening_method_text if application else None),
             contact_text=contact_text,
             official_url=official_url,
         ),

@@ -14,8 +14,14 @@ from app.schemas.common import (
 
 class PolicySourceExcerpt(BaseModel):
     support_target_text: str | None = None
+    selection_criteria_text: str | None = None
+    additional_qualification_text: str | None = None
+    restricted_target_text: str | None = None
     support_content_text: str | None = None
+    application_period_text: str | None = None
     application_method_text: str | None = None
+    required_documents_text: str | None = None
+    screening_method_text: str | None = None
     contact_text: str | None = None
     official_url: str | None = None
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 import math
 import re
 
@@ -108,6 +108,27 @@ def _benefit_label(amount: int | None) -> str | None:
     if amount >= 10000 and amount % 10000 == 0:
         return f"최대 {amount // 10000:,}만원"
     return f"최대 {amount:,}원"
+
+
+def _parse_policy_date(raw: str | None) -> date | None:
+    if not raw:
+        return None
+    text = raw.strip()
+    for fmt in ("%Y-%m-%d", "%Y.%m.%d", "%Y/%m/%d", "%Y%m%d"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def is_policy_expired(application: PolicyApplication | None, *, today: date | None = None) -> bool:
+    if not application:
+        return False
+    end_date = _parse_policy_date(application.business_period_end_date)
+    if not end_date:
+        return False
+    return end_date < (today or datetime.utcnow().date())
 
 
 def _normalize_title(title: str | None) -> str:
@@ -235,8 +256,8 @@ def _urgency_score(application: PolicyApplication | None, benefit: PolicyBenefit
     score = 50
     end_date = application.business_period_end_date
     if end_date:
-        try:
-            due = datetime.strptime(end_date, "%Y-%m-%d").date()
+        due = _parse_policy_date(end_date)
+        if due:
             days_left = (due - datetime.utcnow().date()).days
             if days_left < 0:
                 score = 5
@@ -250,7 +271,7 @@ def _urgency_score(application: PolicyApplication | None, benefit: PolicyBenefit
                 score = 68
             else:
                 score = 56
-        except ValueError:
+        else:
             score = 55
     else:
         period_text = " ".join(
@@ -384,6 +405,9 @@ def analyze_policies(db: Session, req: AnalyzeRequest) -> list[AnalyzedPolicy]:
     deduped: dict[tuple[str, str], tuple[AnalyzedPolicy, tuple[int, int, int, int]]] = {}
 
     for master, condition, benefit, application in policy_rows:
+        if is_policy_expired(application):
+            continue
+
         condition_score, blocking_reasons, actions, tags = _condition_matches(req, condition, application)
         scoring = evaluate_policy_scores(
             req=req,
@@ -431,6 +455,7 @@ def analyze_policies(db: Session, req: AnalyzeRequest) -> list[AnalyzedPolicy]:
             match_score=score,
             score_level=level,
             apply_status=apply_status,
+            source_url=((application.application_url if application else None) or master.application_url or master.source_url),
             eligibility_summary=eligibility_summary,
             blocking_reasons=blocking_reasons,
             recommended_actions=recommendation_actions[:4],
