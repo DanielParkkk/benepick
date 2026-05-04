@@ -1007,9 +1007,21 @@ async function renderAiSummary(detailData) {
   const box = document.getElementById('ai-summary-content');
   if (!box) return;
 
-  const personalSummary = detailData.개인요약 || detailData.personal_summary || '';
+  let personalSummary = detailData.개인요약 || detailData.personal_summary || '';
   const rawFromDetail = detailData.원문발췌 || detailData.raw_excerpt || {};
   const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+  const isWeakPersonalSummary = (s) => {
+    const t = norm(s);
+    if (!t) return false;
+    return [
+      '주요 대상은 지원대상입니다',
+      '주요 지원 내용은 지원대상입니다',
+      '주요 대상은 지원내용입니다',
+      '주요 지원 내용은 지원내용입니다',
+      '주요 대상은 지원 대상입니다',
+      '주요 지원 내용은 지원 내용입니다',
+    ].some((phrase) => t.includes(phrase));
+  };
   const truncate = (s, max) => {
     const t = norm(s);
     if (!t) return '';
@@ -1030,6 +1042,9 @@ async function renderAiSummary(detailData) {
   }
   if (!norm(rawContent) && detailData.summary_stats?.benefit_label && detailData.summary_stats?.benefit_label !== '-') {
     rawContent = detailData.summary_stats.benefit_label;
+  }
+  if (isWeakPersonalSummary(personalSummary)) {
+    personalSummary = '';
   }
 
   if (!personalSummary && !rawTarget && !rawContent && !rawMethod) {
