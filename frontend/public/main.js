@@ -423,6 +423,27 @@ function _humanizeApplicationMethod(method, org, contact, url) {
   return parts.join(' / ');
 }
 
+function _looksBrokenPolicyExcerptText(value) {
+  const text = String(value || '').trim().replace(/\s+/g, ' ');
+  if (!text) return true;
+  if (text.length < 16) return true;
+  if (/^[\)\]\},.;:·~〜\-]/.test(text)) return true;
+  return (
+    text.startsWith('\ub839\uc740') ||
+    text.startsWith('\ub144\ub3c4\uc758') ||
+    text.startsWith('\uc774\ud558*') ||
+    text.startsWith('*') ||
+    text.includes('\uc6d0\ubb38 \ub370\uc774\ud130\uac00 \uc5c6\uc2b5\ub2c8\ub2e4')
+  );
+}
+
+function _preferPolicyExcerptFallback(current, fallback) {
+  if (_looksBrokenPolicyExcerptText(current)) {
+    return fallback || current || '';
+  }
+  return current || '';
+}
+
 async function _applyPolicyExcerptFallback(data, requestedPolicyId) {
   if (!data) return data;
   const raw = data.source_excerpt || {};
@@ -436,6 +457,9 @@ async function _applyPolicyExcerptFallback(data, requestedPolicyId) {
   const officialUrl = raw.official_url || data.application_url || '';
   data.source_excerpt = {
     ...raw,
+    support_target_text: _preferPolicyExcerptFallback(raw.support_target_text, fallback.target),
+    selection_criteria_text: _preferPolicyExcerptFallback(raw.selection_criteria_text, fallback.criteria),
+    support_content_text: _preferPolicyExcerptFallback(raw.support_content_text, fallback.content),
     application_period_text: raw.application_period_text || fallback.period || '',
     application_method_text: _humanizeApplicationMethod(
       raw.application_method_text || fallback.method,
@@ -468,6 +492,9 @@ async function _detailFromExcerptFallback(policyId) {
     description: '',
     personal_summary: '상세 원문 일부를 기준으로 신청 정보를 복원했습니다. 자격 조건은 공식 페이지에서 최종 확인하세요.',
     raw_excerpt: {
+      target: fallback.target || '',
+      criteria: fallback.criteria || '',
+      content: fallback.content || '',
       period: fallback.period || '',
       method: method || fallback.method || '',
       phone: fallback.contact || '',
