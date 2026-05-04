@@ -28,13 +28,24 @@ export default function DashboardPage() {
       setCurrentLang(LANG_DISPLAY[savedLang] || '한국어');
     } catch(e) {}
 
-    // 진행바 애니메이션
+    // 진행바 애니메이션. 첫 페인트 타이밍에 width가 0으로 남는 경우를 막기 위해
+    // 목표 width를 data 속성에 보관하고 마지막에 한 번 더 복원한다.
     const bars = document.querySelectorAll('.progress-fill');
     bars.forEach((bar, i) => {
-      const finalW = bar.style.width;
-      bar.style.width = '0';
+      const finalW = bar.dataset.finalWidth || bar.style.width;
+      if (!finalW || finalW === '0' || finalW === '0%' || finalW === '0px') return;
+      bar.dataset.finalWidth = finalW;
+      bar.style.width = '0%';
       setTimeout(() => { bar.style.width = finalW; }, 300 + i * 120);
     });
+    setTimeout(() => {
+      bars.forEach(bar => {
+        const finalW = bar.dataset.finalWidth;
+        if (finalW && (!bar.style.width || bar.style.width === '0%' || bar.style.width === '0px')) {
+          bar.style.width = finalW;
+        }
+      });
+    }, 1800);
 
     // 온보딩 초기화
     const ONBOARDING_KEY = 'benefic_seen_guide_v20260504';
@@ -513,13 +524,13 @@ export default function DashboardPage() {
                         <div className="percent-label" data-i18n="prob_label">수급 확률</div>
                       </div>
                     </div>
-                    <div className="progress-row">
+                    <div className="progress-row policy-progress-row">
                       <div className="progress-track">
                         <div className="progress-fill green" style={{width:'92%'}}></div>
                       </div>
                       <div className="benefit-chip" data-i18n="pc1_annual">연 240만원</div>
+                      <div className="policy-action" data-i18n="detail_btn">상세 분석 보기 →</div>
                     </div>
-                    <div className="policy-action" data-i18n="detail_btn">상세 분석 보기 →</div>
                   </div>
 
                   {/* Policy 2 - 85% */}
@@ -543,13 +554,13 @@ export default function DashboardPage() {
                         <div className="percent-label" data-i18n="prob_label">수급 확률</div>
                       </div>
                     </div>
-                    <div className="progress-row">
+                    <div className="progress-row policy-progress-row">
                       <div className="progress-track">
                         <div className="progress-fill green" style={{width:'85%'}}></div>
                       </div>
                       <div className="benefit-chip" data-i18n="pc2_benefit">최대 500만원</div>
+                      <div className="policy-action" data-i18n="detail_btn">상세 분석 보기 →</div>
                     </div>
-                    <div className="policy-action" data-i18n="detail_btn">상세 분석 보기 →</div>
                   </div>
 
                   {/* INLINE AD */}
@@ -584,13 +595,13 @@ export default function DashboardPage() {
                         <div className="percent-label" data-i18n="prob_label">수급 확률</div>
                       </div>
                     </div>
-                    <div className="progress-row">
+                    <div className="progress-row policy-progress-row">
                       <div className="progress-track">
                         <div className="progress-fill blue" style={{width:'78%'}}></div>
                       </div>
                       <div className="benefit-chip" data-i18n="pc3_benefit">정부기여금 포함</div>
+                      <div className="policy-action" data-i18n="detail_btn">상세 분석 보기 →</div>
                     </div>
-                    <div className="policy-action" data-i18n="detail_btn">상세 분석 보기 →</div>
                   </div>
 
                   {/* Policy 4 - 74% */}
@@ -614,13 +625,13 @@ export default function DashboardPage() {
                         <div className="percent-label" data-i18n="prob_label">수급 확률</div>
                       </div>
                     </div>
-                    <div className="progress-row">
+                    <div className="progress-row policy-progress-row">
                       <div className="progress-track">
                         <div className="progress-fill blue" style={{width:'74%'}}></div>
                       </div>
                       <div className="benefit-chip" data-i18n="pc4_benefit">연 80만원 상당</div>
+                      <div className="policy-action" data-i18n="detail_btn">상세 분석 보기 →</div>
                     </div>
-                    <div className="policy-action" data-i18n="detail_btn">상세 분석 보기 →</div>
                   </div>
 
                   {/* Policy 5 - 41% */}
@@ -644,13 +655,13 @@ export default function DashboardPage() {
                         <div className="percent-label" data-i18n="prob_label">수급 확률</div>
                       </div>
                     </div>
-                    <div className="progress-row">
+                    <div className="progress-row policy-progress-row">
                       <div className="progress-track">
                         <div className="progress-fill orange" style={{width:'41%'}}></div>
                       </div>
                       <div className="benefit-chip" data-i18n="pc5_benefit">최대 1억원</div>
+                      <div className="policy-action" data-i18n="detail_btn">상세 분석 보기 →</div>
                     </div>
-                    <div className="policy-action" data-i18n="detail_btn">상세 분석 보기 →</div>
                   </div>
 
                 </div>

@@ -906,13 +906,13 @@ function renderDashboard(data) {
               <div class="percent-label">수급 확률</div>
             </div>
           </div>
-          <div class="progress-row">
+          <div class="progress-row policy-progress-row">
             <div class="progress-track">
               <div class="progress-fill ${barColor}" style="width:${pct}%"></div>
             </div>
             <div class="benefit-chip">${escHtml(benefit)}</div>
+            <div class="policy-action">상세 분석 보기 →</div>
           </div>
-          <div class="policy-action">상세 분석 보기 →</div>
         </div>`;
     }).join('');
   }
@@ -1368,12 +1368,7 @@ async function runAnalysis() {
     dashboardData.recommendation_cards = _currentPortfolio;
     renderDashboard(dashboardData);
 
-    // 진행바 재애니메이션
-    document.querySelectorAll('.progress-fill').forEach(bar => {
-      const w = bar.style.width;
-      bar.style.width = '0';
-      setTimeout(() => { bar.style.width = w; }, 100);
-    });
+    animateProgressBars(document.querySelector('.policy-list') || document, 80);
 
     showToast('분석이 완료되었습니다! ✅', 'success');
 
@@ -2023,15 +2018,33 @@ function toggleDocCard(el, originalText) {
   }
 }
 
+function animateProgressBars(root = document, baseDelay = 300) {
+  const bars = Array.from(root.querySelectorAll('.progress-fill'));
+  bars.forEach((bar, i) => {
+    const finalW = bar.dataset.finalWidth || bar.style.width;
+    if (!finalW || finalW === '0' || finalW === '0%' || finalW === '0px') return;
+    bar.dataset.finalWidth = finalW;
+    bar.style.width = '0%';
+    window.setTimeout(() => {
+      bar.style.width = finalW;
+    }, baseDelay + i * 80);
+  });
+
+  // Safety net: if the browser skips the transition during first paint,
+  // restore the intended width so gauges never stay invisible.
+  window.setTimeout(() => {
+    bars.forEach(bar => {
+      const finalW = bar.dataset.finalWidth;
+      if (finalW && (!bar.style.width || bar.style.width === '0%' || bar.style.width === '0px')) {
+        bar.style.width = finalW;
+      }
+    });
+  }, baseDelay + bars.length * 80 + 900);
+}
+
 // Animate bars on load
 window.addEventListener('load', () => {
-  document.querySelectorAll('.progress-fill').forEach((bar, i) => {
-    const finalW = bar.style.width;
-    bar.style.width = '0';
-    setTimeout(() => {
-      bar.style.width = finalW;
-    }, 300 + i * 120);
-  });
+  animateProgressBars(document, 300);
   initDashSearch();
   initOnboarding();
 
