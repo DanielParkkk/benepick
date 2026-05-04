@@ -522,7 +522,7 @@ function _mapLegacyPath(path, body) {
   if (path.startsWith('/search/natural')) {
     const params = new URLSearchParams(path.split('?')[1] || '');
     const q = params.get('q') || '';
-    const size = params.get('top_k') || '20';
+    const size = String(Math.min(Math.max(parseInt(params.get('top_k') || '20', 10) || 20, 1), 50));
     return {
       url: `/api/v1/policies/search?${new URLSearchParams({ q, size, lang: 'ko' }).toString()}`,
       method: 'GET',
@@ -532,7 +532,7 @@ function _mapLegacyPath(path, body) {
   if (path.startsWith('/search/keyword')) {
     const params = new URLSearchParams(path.split('?')[1] || '');
     const q = params.get('keyword') || '';
-    const size = params.get('limit') || '20';
+    const size = String(Math.min(Math.max(parseInt(params.get('limit') || '20', 10) || 20, 1), 50));
     return {
       url: `/api/v1/policies/search?${new URLSearchParams({ q, size, lang: 'ko' }).toString()}`,
       method: 'GET',
