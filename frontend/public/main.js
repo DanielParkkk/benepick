@@ -1059,7 +1059,7 @@ async function renderAiSummary(detailData) {
     rawMethod  ? { label:'📋 신청 방법', value: truncate(rawMethod, 200) } : null,
   ].filter(Boolean);
 
-  const personalHtml = personalSummary
+  const personalHtml = personalSummary && rows.length === 0
     ? `<div class="ai-summary-row" style="border-bottom:1px solid rgba(245,195,60,.15);margin-bottom:8px;padding-bottom:8px;">
         <span class="ai-summary-icon">📄</span>
         <div style="flex:1;font-size:13.5px;font-weight:500;line-height:1.65;color:#2D2200">${md2html(personalSummary)}</div>
