@@ -8,13 +8,18 @@ import urllib.request
 from typing import Dict, List, Optional
 
 import pandas as pd
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except Exception:  # pragma: no cover - optional local convenience dependency
+    def load_dotenv(*args, **kwargs):
+        return False
 
 from .policy_heuristics import (
     count_preserve_tokens,
     protect_special_tokens,
     restore_special_tokens,
 )
+from .output_guard import OutputGuard
 from .prompt_builder import PromptBuilder
 from .text_preprocessor import clean_policy_text
 
@@ -37,6 +42,7 @@ class PolicyTranslationService:
     }
     MANWON_RE = re.compile(r"(?P<num>\d[\d,]*(?:\.\d+)?)\s*\uB9CC\uC6D0")
     WON_RE = re.compile(r"(?P<num>\d[\d,]*(?:\.\d+)?)\s*\uC6D0")
+    AGE_RE = re.compile(r"(?:\uB9CC\s*)?(?P<age>\d{1,3}(?:\s*[~\-]\s*\d{1,3})?)\s*\uC138")
 
     def __init__(
         self,
@@ -55,6 +61,7 @@ class PolicyTranslationService:
 
         self.glossary_df = self._load_glossary(csv_path)
         self.prompt_builder = self._build_prompt_builder()
+        self.guard = OutputGuard()
         print(f"Translation model ready: {self.model_name}")
 
     def _build_prompt_builder(self) -> PromptBuilder:
@@ -212,6 +219,28 @@ class PolicyTranslationService:
         localized = localized.replace("KRW KRW", "KRW")
         return localized
 
+    def _localize_age_units(self, text: str, target_lang: str) -> str:
+        if target_lang == "ko":
+            return text
+
+        def replace_age(match: re.Match[str]) -> str:
+            age = re.sub(r"\s+", "", match.group("age")).replace("~", "-")
+            if target_lang == "en":
+                return f"ages {age}" if "-" in age else f"age {age}"
+            if target_lang == "zh":
+                return f"{age}岁"
+            if target_lang == "ja":
+                return f"{age}歳"
+            if target_lang == "vi":
+                return f"{age} tuổi"
+            return match.group(0)
+
+        localized = self.AGE_RE.sub(replace_age, text)
+        if target_lang == "en":
+            localized = re.sub(r"\baged\s+ages\s+", "aged ", localized, flags=re.IGNORECASE)
+            localized = re.sub(r"\baged\s+age\s+", "aged ", localized, flags=re.IGNORECASE)
+        return localized
+
     def _candidate_models(self, target_lang: str) -> List[str]:
         candidates: list[str] = []
 
@@ -220,11 +249,11 @@ class PolicyTranslationService:
 
         if env_specific:
             candidates.append(env_specific)
-        if target_lang in {"zh", "ja"}:
-            candidates.append("qwen3:4b")
         if env_generic:
             candidates.append(env_generic)
         candidates.append(self.model_name)
+        if target_lang in {"zh", "ja"}:
+            candidates.append("qwen3:4b")
 
         deduped: list[str] = []
         seen: set[str] = set()
@@ -235,6 +264,16 @@ class PolicyTranslationService:
             deduped.append(normalized)
             seen.add(normalized)
         return deduped
+
+    @staticmethod
+    def _has_replacement_artifacts(text: str) -> bool:
+        text = str(text or "")
+        return text.count("?") >= 3 or "�" in text
+
+    def _is_plausible_translation(self, text: str, target_lang: str) -> bool:
+        if self._has_replacement_artifacts(text):
+            return False
+        return self.guard.looks_like_target_language(text, target_lang)
 
     def apply_glossary_postprocess(self, text: str, target_lang: str) -> str:
         if target_lang == "ko":
@@ -302,9 +341,18 @@ class PolicyTranslationService:
         translated_text = restore_special_tokens(translated_text, replacements)
         translated_text = self.apply_glossary_postprocess(translated_text, target_lang)
         translated_text = self._localize_money_units(translated_text, target_lang)
+        translated_text = self._localize_age_units(translated_text, target_lang)
 
         if count_preserve_tokens(translated_text) > 0:
             raise RuntimeError("Translation still contains unresolved preserve tokens.")
+
+        if not self._is_plausible_translation(translated_text, target_lang):
+            return {
+                "language": target_lang,
+                "translated_text": text,
+                "translation_source": "guard_fallback",
+                "is_fallback": True,
+            }
 
         return {
             "language": target_lang,

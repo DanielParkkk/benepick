@@ -97,6 +97,7 @@ class PolicySummary(BaseModel):
     match_score: int
     score_level: ScoreLevel
     apply_status: ApplyStatus
+    source_url: str | None = None
     benefit_amount: int | None = None
     benefit_amount_label: str | None = None
     benefit_summary: str | None = None

@@ -1,349 +1,339 @@
-# BenePick — 한국 복지 정책 AI 추천 서비스
+# BenePick
 
-복지로·정부24 정책 데이터 10,367건을 하이브리드 RAG(Retrieval-Augmented Generation) 파이프라인으로 검색하고, 사용자 조건에 맞는 복지 정책을 AI가 추천·요약·번역하는 서비스입니다.
+한국 복지 정책(복지로 + 정부24) 데이터를 기반으로, 사용자 조건에 맞는 정책을 추천/검색/상세 분석하는 서비스입니다.  
+RAG(하이브리드 검색) + FastAPI + Next.js + PostgreSQL 구조로 구성되어 있습니다.
 
----
+## 1) 프로젝트 개요
 
-## 팀 구성
+- 정책 데이터: `10,367건` (`processed/chunks.csv` 367 + `processed/gov24/chunks.csv` 10,000)
+- 백엔드: FastAPI (`app/`)
+- 프론트엔드: Next.js + 정적 페이지 라우팅 (`frontend/`)
+- 검색/추천: `rag/` 파이프라인 (Dense + BM25)
+- 저장소:
+  - 정책 정규화 데이터: PostgreSQL
+  - 벡터/검색 인덱스: Chroma + numpy fallback
 
-| 이름 | 역할 |
-|------|------|
-| 박종민 | RAG 파이프라인, 데이터 수집·임베딩, 평가 |
-| 최태홍 | FastAPI 백엔드, PostgreSQL, API 연동 |
-| 고준 | 데이터 수집 |
-| 남정현 | Next.js 프론트엔드 |
-| 최은철 | AI 요약·번역·추론 모듈, 프롬프트 엔지니어링 |
+핵심 목표는 다음 3가지입니다.
 
----
-
-## 전체 아키텍처
-
-```
-사용자 (브라우저)
-    │
-    ▼
-Next.js 프론트엔드 (port 3000)
-    │  NEXT_PUBLIC_API_BASE_URL
-    ▼
-FastAPI 백엔드 (port 8000)
-    │
-    ├── app/api/routes.py         API 엔드포인트
-    ├── app/services/rag.py       RAG 파이프라인 호출
-    ├── app/services/ai_enricher.py  AI 요약·번역·추론
-    └── PostgreSQL                정책 메타데이터 DB
-         │
-         ▼
-    rag/pipeline.py               RAG 메인 파이프라인
-         │
-         ├── HybridSearcher       BGE-M3 벡터(60%) + BM25/Kiwi(40%)
-         │       └── ChromaDB HTTP 서버 (port 8001)
-         ├── bge-reranker-v2-m3  정밀 재정렬 (CUDA)
-         ├── CRAG                 품질 검증 및 폴백
-         └── gemma3:4b (Ollama)   최종 답변 생성
-```
+1. 사용자 조건 기반 정책 추천 (`/api/v1/eligibility/analyze`)
+2. 정책 검색/상세 조회 (`/api/v1/policies/search`, `/api/v1/policies/{id}/detail`)
+3. 신청 준비/체크리스트/커뮤니티 기능 제공
 
 ---
 
-## 주요 구조
+## 2) 아키텍처
 
+```text
+Browser (Vercel)
+  -> frontend (Next.js + public/*.html + main.js)
+  -> FastAPI (Railway)
+      -> app/api/routes.py
+      -> app/services/rag.py
+      -> app/services/ai_enricher.py (optional)
+      -> PostgreSQL (policy_master, policy_condition, ...)
+      -> rag/pipeline.py + rag/searcher.py
+           - Dense: BGE-M3
+           - Sparse: BM25 + Kiwi
+           - Optional reranker
+           - CRAG quality gate
 ```
+
+### RAG LLM 선택(현재 코드 기준)
+
+`rag/pipeline.py`에서 아래 우선순위로 모델 공급자를 선택합니다.
+
+1. `BENEPICK_LLM_PROVIDER` 명시값
+2. `BENEPICK_LLM_MODE=experiment|prod` + 각 provider 설정
+3. 키 존재 여부 기반 자동 선택
+
+기본값:
+
+- `BENEPICK_PROD_PROVIDER=groq`
+- `GROQ_MODEL=llama-3.1-8b-instant`
+- OpenAI / Ollama는 폴백 경로
+
+---
+
+## 3) 주요 디렉토리
+
+```text
 final_project-develope/
-├── app/                          FastAPI 백엔드
-│   ├── api/routes.py             전체 API 엔드포인트
-│   ├── services/
-│   │   ├── rag.py                RAG 호출 래퍼
-│   │   ├── ai_enricher.py        AI 모듈 통합 진입점
-│   │   ├── ai_modules/           요약·번역·추론 모듈
-│   │   │   ├── summary_service.py
-│   │   │   ├── translation_service.py
-│   │   │   ├── qwen_reasoner.py
-│   │   │   ├── output_guard.py
-│   │   │   ├── prompt_builder.py
-│   │   │   ├── benepick_dict.csv  행정 용어 번역 사전
-│   │   │   └── prompts/
-│   │   ├── analysis.py
-│   │   ├── application.py
-│   │   └── community.py
-│   ├── db/
-│   │   ├── models.py             SQLAlchemy 모델
-│   │   └── session.py
-│   ├── schemas/                  Pydantic 스키마
-│   ├── core/config.py            환경변수 설정
-│   └── main.py                   FastAPI 앱
-│
-├── rag/                          RAG 파이프라인
-│   ├── pipeline.py               메인 파이프라인 (benepick_rag)
-│   ├── searcher.py               하이브리드 검색기 (BGE-M3 + BM25/Kiwi)
-│   ├── embedder.py               BGE-M3 임베딩 생성
-│   ├── vector_store.py           ChromaDB 저장·로드
-│   ├── preprocessor.py           데이터 전처리·청킹
-│   ├── collector.py              복지로·정부24 API 수집
-│   ├── evaluate.py               Ragas 평가 스크립트
-│   └── chroma_db/                ChromaDB 벡터 DB
-│
-├── processed/                    전처리 완료 데이터
-│   ├── chunks.csv                복지로 청크 (367건)
-│   ├── embeddings.npy            복지로 임베딩
-│   └── gov24/
-│       ├── chunks.csv            정부24 청크 (10,000건)
-│       └── embeddings.npy
-│
-├── frontend/                     Next.js 프론트엔드
-│   ├── app/
-│   │   ├── layout.tsx
-│   │   └── page.tsx
-│   └── components/
-│       └── dashboard.tsx         전체 화면 SPA 컴포넌트
-│
-├── requirements.txt
-└── .env.example
+├─ app/
+│  ├─ api/
+│  │  ├─ routes.py              # 주요 REST API
+│  │  └─ deps.py
+│  ├─ core/config.py            # 환경변수 로딩
+│  ├─ db/
+│  │  ├─ models.py              # SQLAlchemy 모델
+│  │  ├─ session.py
+│  │  └─ base.py
+│  ├─ schemas/                  # 응답/요청 스키마
+│  ├─ services/
+│  │  ├─ analysis.py
+│  │  ├─ rag.py                 # RAG 호출 + timeout/circuit 제어
+│  │  ├─ application.py
+│  │  ├─ community.py
+│  │  ├─ ai_enricher.py         # 요약/번역/추론 통합
+│  │  └─ ai_modules/
+│  ├─ scripts/
+│  │  ├─ init_db.py
+│  │  ├─ fetch_policies.py
+│  │  └─ normalize_policies.py
+│  └─ main.py
+├─ rag/
+│  ├─ pipeline.py               # 쿼리 보강, 검색, rerank, CRAG, answer
+│  ├─ searcher.py               # HybridSearcher(Dense + BM25)
+│  ├─ rebuild_chroma.py         # Chroma 재생성
+│  ├─ vector_store.py           # HTTP Chroma 적재 유틸
+│  └─ tests/test_pipeline.py
+├─ processed/
+│  ├─ chunks.csv
+│  ├─ embeddings.npy
+│  └─ gov24/
+│     ├─ chunks.csv
+│     └─ embeddings.npy
+├─ frontend/
+│  ├─ app/                      # / -> /index.html 리다이렉트 구조
+│  ├─ public/                   # 실제 UI 엔트리(html/css/js)
+│  ├─ lib/api.ts
+│  └─ package.json
+├─ railway.json
+├─ requirements.txt
+└─ start_server.ps1             # 로컬 원클릭 실행 보조
 ```
 
 ---
 
-## 핵심 모델 및 설정
+## 4) API 요약
 
-| 항목 | 값 | 근거 |
-|------|-----|------|
-| 임베딩 | `BAAI/bge-m3` (CPU) | MTEB 한국어 최상위 |
-| Reranker | `BAAI/bge-reranker-v2-m3` (CUDA) | BGE 계열 한국어 강점 |
-| 하이브리드 alpha | `0.6` (벡터 60% + BM25 40%) | 실험으로 확정 |
-| BM25 토크나이저 | Kiwi 형태소 분석기 (NNG/NNP/XR/SL) | 한국어 조사 처리 |
-| RAG LLM | `gemma3:4b` (Ollama) | 품질·속도 균형 |
-| AI 모듈 LLM | `qwen3.5:4b` (Ollama) | 구조화 JSON 출력 특화 |
-| 벡터 DB | ChromaDB (HTTP 서버, port 8001) | 벡터 + 메타데이터 통합 |
-| CRAG 품질 기준 | HIGH ≥ 0.7 / MEDIUM ≥ 0.4 / LOW → 폴백 | |
-| 지원 언어 | `ko` / `en` / `zh` / `ja` / `vi` | ISO 639-1 |
+공통 응답 래퍼: `{"success": true, "data": ... , "meta": ...}`
 
----
+### 분석/검색/상세
 
-## 사전 준비
+- `POST /api/v1/eligibility/analyze`
+- `GET /api/v1/policies/search?q=...&size=...&lang=ko|en|zh|ja|vi`
+- `GET /api/v1/policies/{policy_id}/detail?lang=...`
 
-### 1. 필수 소프트웨어
+### 포트폴리오/신청
 
-```
-Python 3.12
-Node.js 18+
-PostgreSQL 15+
-Ollama (https://ollama.com)
-ChromaDB (pip install chromadb)
-```
+- `GET /api/v1/portfolio`
+- `GET /api/v1/applications/{policy_id}/prep`
+- `PATCH /api/v1/applications/{policy_id}/checklist/{code}`
+- `PATCH /api/v1/applications/{policy_id}/documents/{document_type}`
 
-### 2. Ollama 모델 설치
+### 커뮤니티
 
-```bash
-ollama pull gemma3:4b
-ollama pull qwen3.5:4b
-```
+- `GET /api/v1/community/posts`
+- `GET /api/v1/community/posts/{post_id}`
+- `POST /api/v1/community/posts`
+- `POST /api/v1/community/posts/{post_id}/like`
+- `DELETE /api/v1/community/posts/{post_id}/like`
+- `GET /api/v1/community/hot-posts`
+- `GET /api/v1/community/stats`
 
-### 3. Kiwi 모델 경로 설정
+### 헬스체크
 
-한글 경로에서 Kiwi C 확장이 모델 파일을 열지 못하는 문제가 있습니다.  
-모델 파일을 ASCII 경로로 복사한 뒤 `rag/searcher.py`의 `model_path`를 해당 경로로 수정하세요.
-
-```bash
-# 예시 (경로는 환경에 맞게 수정)
-cp -r venv/Lib/site-packages/kiwipiepy_model C:/Users/<user>/kiwi_model
-```
-
-```python
-# rag/searcher.py
-_kiwi = Kiwi(model_path='C:/Users/<user>/kiwi_model', num_workers=-1)
-```
+- `GET /health`
 
 ---
 
-## 설치
+## 5) 로컬 실행 가이드
+
+## 5.1 필수 준비
+
+- Python 3.12
+- Node.js 18+
+- PostgreSQL
+- (선택) Ollama
+
+## 5.2 설치
 
 ```bash
-# 프로젝트 루트에서
 pip install -r requirements.txt
-
-# 프론트엔드
 cd frontend
 npm install
 ```
 
----
+## 5.3 환경변수(.env)
 
-## 환경변수 설정
-
-`.env.example`을 복사해서 `.env` 파일을 만들고 실제 값을 입력합니다.
+루트 `.env.example`를 복사해 `.env` 생성:
 
 ```env
 APP_ENV=local
-
-# PostgreSQL
 DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/benepick
 
-# 공공 API 키
-GOV24_SERVICE_KEY=your-gov24-service-key
+GOV24_SERVICE_KEY=...
 GOV24_BASE_URL=https://api.odcloud.kr/api/gov24/v3
 
-BOKJIRO_SERVICE_KEY=your-bokjiro-service-key
+BOKJIRO_SERVICE_KEY=...
 BOKJIRO_BASE_URL=http://apis.data.go.kr/B554287/NationalWelfareInformationsV001
 
-# AI 모듈 (요약·번역)
-QWEN_MODEL=qwen3.5:4b
-OLLAMA_BASE_URL=http://127.0.0.1:11434
-OLLAMA_TIMEOUT=300
+GROQ_API_KEY=...
+GROQ_MODEL=llama-3.1-8b-instant
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o-mini
+OLLAMA_MODEL=qwen3.5:4b
+
+BENEPICK_LLM_MODE=auto
+BENEPICK_LLM_PROVIDER=
+BENEPICK_EXPERIMENT_PROVIDER=openai
+BENEPICK_PROD_PROVIDER=groq
+
+RAG_ANSWER_TIMEOUT_SECONDS=15
+BENEPICK_ENABLE_RERANKER=0
+BENEPICK_DISABLE_CHROMA_VECTOR=1
 ```
 
-프론트엔드 API 주소가 다르면 `frontend/.env.local`도 추가합니다.
+## 5.4 실행
 
-```env
-NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000/api/v1
+### 옵션 A: 스크립트 실행
+
+```powershell
+.\start_server.ps1
 ```
 
----
+### 옵션 B: 수동 실행
 
-## 실행 순서
-
-터미널 4개를 사용합니다.
+터미널 1:
 
 ```bash
-# [터미널 1] Ollama
-ollama serve
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
 
-# [터미널 2] ChromaDB HTTP 서버
-chroma run --port 8001 --path ./chroma_db
+터미널 2:
 
-# [터미널 3] FastAPI 백엔드 (프로젝트 루트에서)
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-
-# [터미널 4] Next.js 프론트엔드
+```bash
 cd frontend
 npm run dev
 ```
 
-브라우저에서 접속합니다.
+접속:
 
-```
-http://localhost:3000
-```
+- `http://localhost:3000`
 
 ---
 
-## API 엔드포인트
+## 6) RAG 동작 포인트
 
-모든 응답은 `{ "success": true, "data": { ... } }` 형식입니다.
+`rag/pipeline.py` 기준:
 
-| 메서드 | URL | 설명 |
-|--------|-----|------|
-| `POST` | `/api/v1/eligibility/analyze` | 사용자 조건 분석 + RAG 정책 추천 |
-| `GET` | `/api/v1/policies/search?q=&lang=` | 키워드 정책 검색 |
-| `GET` | `/api/v1/policies/{id}/detail?lang=` | 정책 상세 + AI 요약·번역 |
-| `GET` | `/api/v1/portfolio` | 추천 정책 포트폴리오 |
-| `GET` | `/api/v1/applications/{id}/prep` | 신청 준비 (서류·체크리스트) |
-| `PATCH` | `/api/v1/applications/{id}/checklist/{code}` | 체크리스트 항목 업데이트 |
-| `PATCH` | `/api/v1/applications/{id}/documents/{type}` | 서류 상태 업데이트 |
-| `GET` | `/api/v1/community/posts` | 커뮤니티 목록 |
-| `POST` | `/api/v1/community/posts` | 커뮤니티 글 작성 |
-| `POST` | `/api/v1/community/posts/{id}/like` | 좋아요 |
-| `GET` | `/api/v1/community/hot-posts` | 인기 글 |
-| `GET` | `/api/v1/community/stats` | 커뮤니티 통계 |
-| `GET` | `/health` | 헬스체크 |
+1. `build_search_query()`에서 user condition을 자연어 쿼리로 보강
+2. `HybridSearcher.search()`로 Dense + BM25 검색
+3. (옵션) reranker
+4. `crag_quality_check()`로 품질 기반 분기
+5. `generate_answer()`로 답변 생성
 
-### POST `/api/v1/eligibility/analyze` 요청 예시
+`rag/searcher.py` 기준:
 
-```json
-{
-  "age": 27,
-  "region_code": "KR-11-680",
-  "region_name": "서울 강남구",
-  "income_band": "MID_60_80",
-  "household_type": "SINGLE",
-  "employment_status": "UNEMPLOYED",
-  "housing_status": "MONTHLY_RENT"
-}
-```
+- `BENEPICK_DISABLE_CHROMA_VECTOR=1`이면 Chroma vector query를 건너뛰고 numpy dense fallback 사용
+- Chroma 쿼리 실패 시 자동으로 numpy fallback 전환
+- BM25는 Kiwi 형태소 분석 기반
 
 ---
 
-## AI 모듈 동작
+## 7) 데이터/인덱스 작업
 
-`qwen3.5:4b`가 Ollama에 없으면 AI 모듈은 자동으로 비활성화되고, 서버는 정상 실행됩니다.
+### DB 테이블 생성
 
-- **정책 상세 조회** 시 → `qwen3.5:4b`로 정책 요약 + 거절사유·신청 가이드 생성
-- `lang=en/zh/ja/vi` 파라미터 → `qwen3.5:4b` + `benepick_dict.csv` 행정용어 사전으로 번역
-- 번역 실패 시 → 한국어 원문 그대로 반환 (`is_fallback: true`)
-
----
-
-## RAG 파이프라인 흐름
-
+```bash
+python -m app.scripts.init_db
 ```
-사용자 질문 + user_condition
-    ↓
-build_search_query()     user_condition을 자연어 쿼리에 보강
-    ↓
-HybridSearcher.search()  BGE-M3 Dense(60%) + BM25/Kiwi(40%) → Top-25
-    ↓
-rerank()                 bge-reranker-v2-m3로 정밀 재정렬 → Top-5
-    ↓
-crag_quality_check()     평균 점수 기준 3단계 분기
-    │  HIGH(≥0.7)  → 원본 결과 사용
-    │  MID(≥0.4)   → 조건 완화 재검색 (지역/가구 제거)
-    └  LOW(<0.4)   → 카테고리 폴백 검색
-    ↓
-generate_answer()        gemma3:4b (Ollama) 로 문서 기반 답변 생성
-    ↓
-success_response()       팀 공통 응답 형식으로 반환
+
+### Chroma 재구축(로컬 persistent)
+
+```bash
+python rag/rebuild_chroma.py
+```
+
+### Chroma HTTP 적재 테스트 유틸
+
+```bash
+python rag/vector_store.py
 ```
 
 ---
 
-## VRAM 사용량 참고 (RTX 4060 Laptop 8GB 기준)
+## 8) 테스트/검증
 
-| 컴포넌트 | 디바이스 | VRAM |
-|----------|----------|------|
-| BGE-M3 임베딩 | CPU | RAM 사용 |
-| bge-reranker-v2-m3 | CUDA | ~1.5 GB |
-| gemma3:4b (Ollama) | CUDA | ~2.6 GB |
-| qwen3.5:4b (Ollama, 필요시) | CUDA | ~2.6 GB |
-| **최대 동시 사용** | | **~4.1 GB** |
-
-Ollama는 한 번에 하나의 모델만 VRAM에 올리므로 gemma3:4b와 qwen3.5:4b는 동시에 로드되지 않습니다.
-
----
-
-## 평가 결과 (Ragas, gemma3:4b 전환 후 재평가 예정)
-
-| 지표 | gemma3:1b 기준 (2026-04-02) |
-|------|---------------------------|
-| Faithfulness | 0.9769 |
-| Answer Relevancy | 0.5582 |
-| 평균 | 0.7675 |
-
-평가 재실행:
+### 백엔드(RAG 핵심)
 
 ```bash
 cd rag
-# ChromaDB 서버 및 Ollama가 실행 중이어야 합니다
-python evaluate.py
+pytest tests/test_pipeline.py -q
 ```
 
----
-
-## 데이터 재구축 (ChromaDB 초기화)
-
-ChromaDB를 처음 구축하거나 재구축이 필요할 때 실행합니다.  
-`chroma run --port 8001 --path ./chroma_db`가 실행 중이어야 합니다.
+### 프론트 빌드
 
 ```bash
-cd rag
-python vector_store.py
+cd frontend
+npm run build
+```
+
+### 문법 컴파일 체크(선택)
+
+```bash
+python -m compileall app rag
 ```
 
 ---
 
-## Git 브랜치 전략
+## 9) 배포 운영 가이드
 
-| 브랜치 | 용도 |
-|--------|------|
-| `main` | 최종 배포 |
-| `develope` | 통합 개발 (현재 메인 브랜치) |
-| `backend` | 백엔드 API |
-| `ai_modules` | AI 요약·번역 모듈 |
-| `frontend` / `njh` | 프론트엔드 UI |
-| `RAG` / `rag` | RAG 파이프라인 |
+## 9.1 권장 조합
+
+- 프론트: Vercel
+- 백엔드: Railway
+
+## 9.2 Railway
+
+- `railway.json`에서 `uvicorn app.main:app ...` 기반 기동
+- healthcheck: `/health`
+- CORS는 `app/main.py`에서 허용 origin + regex(`*.railway.app`) 설정
+
+## 9.3 Vercel
+
+- `frontend`를 프로젝트 루트로 설정
+- 백엔드 주소는 프론트 `API_BASE` 해석 로직(쿼리/전역/localStorage/default)을 통해 연결
+
+---
+
+## 10) 트러블슈팅
+
+### 1) CORS 에러처럼 보이는데 실제 원인이 500인 경우
+
+- 브라우저 CORS 메시지와 함께 백엔드 로그 traceback을 반드시 확인
+- `/health`는 정상이어도 특정 API 내부 예외로 실패할 수 있음
+
+### 2) Chroma HNSW 로드 실패
+
+- `BENEPICK_DISABLE_CHROMA_VECTOR=1`로 numpy dense fallback 강제
+- 필요 시 `python rag/rebuild_chroma.py`로 인덱스 재생성
+
+### 3) 상세 화면 원문 발췌 비어 보임
+
+- `policy_id` 기준으로 `/api/v1/policies/{id}/detail` 응답이 정상인지 확인
+- `source_excerpt` 필드 유무 확인
+
+### 4) OneDrive 경로에서 파일 잠금
+
+- Chroma 파일 lock 문제가 잦으면 `BENEPICK_CHROMA_PATH`를 로컬 경로(OneDrive 외)로 지정
+
+---
+
+## 11) 팀
+
+| 이름 | 담당 |
+|---|---|
+| 박종민 | 백엔드/프론트/RAG 통합, 배포 운영, 품질 개선 |
+| 고준 | 데이터 수집 |
+| 남정현 | 프론트엔드 UI |
+| 최은철 | AI 요약/번역/추론 모듈 |
+
+---
+
+## 12) 보안/운영 주의사항
+
+- `.env`/API 키는 절대 Git에 커밋하지 않습니다.
+- 운영 배포에서는 `GROQ_API_KEY`, `DATABASE_URL`을 플랫폼 시크릿으로 관리하세요.
+- 실서비스 로그에는 사용자 민감정보가 남지 않도록 주기적으로 점검하세요.
+

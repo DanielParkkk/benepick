@@ -1,13 +1,13 @@
 const TAB_PAGE_MAP = {
-  'dashboard':       'index.html',
-  'search':          'search.html',
-  'detail':          'analysis.html',
-  'portfolio':       'portfolio.html',
-  'apply':           'apply.html',
-  'community':       'community.html',
-  'profile':         'profile.html',
-  'recently-viewed': 'recently-viewed.html',
-  'scrap':           'scrap.html',
+  'dashboard':       '/',
+  'search':          '/search',
+  'detail':          '/analysis',
+  'portfolio':       '/portfolio',
+  'apply':           '/apply',
+  'community':       '/community',
+  'profile':         '/profile',
+  'recently-viewed': '/recently-viewed',
+  'scrap':           '/scrap',
 };
 
 function showTab(tab) {
@@ -604,7 +604,7 @@ function toggleScrap(policyId, btnEl) {
   const token = localStorage.getItem('token');
   if (!token) {
     _showScrapToast('🔑 로그인 후 스크랩할 수 있어요');
-    setTimeout(() => { window.location.href = 'login.html'; }, 1200);
+    setTimeout(() => { window.location.href = '/login'; }, 1200);
     return;
   }
 
@@ -1088,12 +1088,12 @@ const _STATIC_DETAIL = {
 
 // ── showDetail: 백엔드 상세 API 단일 소스 우선 → 로컬 폴백 ────────
 async function showDetail(policyId) {
-  const _onAnalysisPage = (location.pathname.split('/').pop() || 'index.html') === 'analysis.html';
+  const _onAnalysisPage = location.pathname === '/analysis';
   if (!_onAnalysisPage) {
-    // 다른 페이지에서 호출: policyId 저장 후 analysis.html로 이동
+    // 다른 페이지에서 호출: policyId 저장 후 /analysis로 이동
     try { localStorage.setItem('benefic_detail_id', policyId); } catch(e) {}
-    showTab('detail');
-    return; // analysis.html의 load 핸들러가 showDetail을 재호출함
+    window.location.href = '/analysis';
+    return; // analysis 페이지의 load 핸들러가 showDetail을 재호출함
   }
   // analysis.html에서 직접 호출된 경우: 이동 없이 바로 렌더링
 
@@ -1474,7 +1474,7 @@ async function doDashSearch() {
   // 검색어를 sessionStorage에 저장한 뒤 search.html로 이동
   // (페이지 이동 후 main.js가 재실행되면서 아래 initSearch()가 이를 감지해 자동 검색)
   try { sessionStorage.setItem('benefic_search_query', q); } catch(e) {}
-  window.location.href = 'search.html';
+  window.location.href = '/search';
 }
 
 function _renderPolicyCard(p) {
@@ -1490,10 +1490,10 @@ function _renderPolicyCard(p) {
   const scorePct = p.score!==undefined ? Math.round(p.score*100) : null;
   const iconMap  = {'현금':'💰','이용권':'🎫','서비스':'🛎️','주거':'🏠','고용':'💼','교육':'🎓','의료':'🏥','노인':'👴','장애인':'♿','가족':'👨‍👩‍👧','기초생활':'🛡️','금융':'🏦','창업':'🚀','보건':'💊'};
   const icon = iconMap[stype]||iconMap[field]||'📋';
-  const policyKey = (p['서비스명']||p.서비스명||'').replace(/\s+/g,'-');
+  const policyKey = p.policy_id || p['policy_id'] || (p['서비스명']||p.서비스명||'').replace(/\s+/g,'-');
   const isScrapped = _isScrapped(policyKey);
   return `<div class="policy-card-wrap" style="position:relative;margin-bottom:12px">
-    <div class="policy-card mid">
+    <div class="policy-card mid" onclick="goToPolicyDetailPage('${policyKey}')" style="cursor:pointer">
       <!-- ✅ scrap-btn은 .policy-card 직계 자식으로 배치 (position:absolute 기준 보장) -->
       <button
         class="scrap-btn ${isScrapped ? 'active' : ''}"
@@ -1524,6 +1524,11 @@ function _renderPolicyCard(p) {
       </div>
     </div>
   </div>`;
+}
+
+function goToPolicyDetailPage(policyKey) {
+  try { localStorage.setItem('benefic_detail_id', policyKey); } catch(e) {}
+  window.location.href = '/policy-detail';
 }
 
 function renderSearchResults(results) {
@@ -1795,10 +1800,10 @@ function escHtml(str) {
 // Init community on page load
 initComm();
 
-// community.html 직접 접근 시 자동 렌더링
+// community 직접 접근 시 자동 렌더링
 (function() {
-  const currentPage = location.pathname.split('/').pop() || 'index.html';
-  if (currentPage === 'community.html') {
+  const currentPage = location.pathname;
+  if (currentPage === '/community') {
     renderCommPosts();
     // insight widget 초기화
     const p = document.getElementById('iStatPosts');
@@ -1970,11 +1975,11 @@ window.addEventListener('load', () => {
   initOnboarding();
 
   // 현재 페이지에 맞는 초기화 실행
-  const currentPage = location.pathname.split('/').pop() || 'index.html';
-  if (currentPage === 'search.html') {
+  const currentPage = location.pathname;
+  if (currentPage === '/search') {
     initSearch();
   }
-  if (currentPage === 'analysis.html') {
+  if (currentPage === '/analysis') {
     const pid = (() => { try { return localStorage.getItem('benefic_detail_id'); } catch(e) { return null; } })();
     if (pid) {
       // 복원 즉시 삭제 — showDetail 내 showTab('detail')이 다시 analysis.html로
@@ -2023,7 +2028,7 @@ document.addEventListener('click', function(e) {
 function doLogout() {
   localStorage.removeItem('token');
   localStorage.removeItem('benefic_user');
-  window.location.href = 'login.html';
+  window.location.href = '/login';
 }
 
 // 페이지 로드 시 아바타 영역 초기화
@@ -2058,10 +2063,10 @@ function initAuthNav() {
               </div>
             </div>
             <div class="avatar-dd-divider"></div>
-            <a href="scrap.html" class="avatar-dd-item" data-i18n="nav_scrap">스크랩</a>
-            <a href="portfolio.html" class="avatar-dd-item" data-i18n="nav_user_portfolio">내 포트폴리오</a>
-            <a href="profile.html" class="avatar-dd-item" data-i18n="nav_user_profile">👤 개인정보 수정</a>
-            <a href="recently-viewed.html" class="avatar-dd-item" data-i18n="nav_user_recently">🕒 최근 본 공고</a>
+            <a href="/scrap" class="avatar-dd-item" data-i18n="nav_scrap">스크랩</a>
+            <a href="/portfolio" class="avatar-dd-item" data-i18n="nav_user_portfolio">내 포트폴리오</a>
+            <a href="/profile" class="avatar-dd-item" data-i18n="nav_user_profile">👤 개인정보 수정</a>
+            <a href="/recently-viewed" class="avatar-dd-item" data-i18n="nav_user_recently">🕒 최근 본 공고</a>
             <div class="avatar-dd-divider"></div>
             <div class="avatar-dd-item logout" onclick="doLogout()" data-i18n="nav_user_logout">🚪 로그아웃</div>
           </div>
@@ -2075,7 +2080,7 @@ function initAuthNav() {
     // 비로그인: 로그인 버튼
     wrap.outerHTML = `
       <div class="nav-avatar-wrap">
-        <a href="login.html" class="btn-login-nav">🔑 로그인</a>
+        <a href="/login" class="btn-login-nav">🔑 로그인</a>
       </div>`;
   }
 }
@@ -2118,7 +2123,7 @@ function checkLoginStatus() {
  * @param {object} [options]       옵션 (loginUrl: 로그인 페이지 경로)
  */
 function applyLockOverlay(targetSelector, options = {}) {
-  const loginUrl = options.loginUrl || 'login.html';
+  const loginUrl = options.loginUrl || '/login';
 
   document.querySelectorAll(targetSelector).forEach(target => {
     // 이미 처리된 요소 건너뜀
@@ -2159,7 +2164,7 @@ function initLockOverlays() {
   if (checkLoginStatus()) return;   // 로그인 상태면 아무것도 하지 않음
 
   // 비로그인 시 상단 프로필 카드(.profile-card)만 잠금
-  applyLockOverlay('.profile-card', { loginUrl: 'login.html' });
+  applyLockOverlay('.profile-card', { loginUrl: '/login' });
 }
 
 // DOMContentLoaded 시 자동 실행 (initAuthNav 이후 동작 보장)

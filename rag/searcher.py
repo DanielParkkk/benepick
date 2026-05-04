@@ -77,6 +77,88 @@ _kiwi = Kiwi(model_path=_kiwi_model_path, num_workers=-1)
 #   NP  → "나", "우리" 등 대명사 — 불필요
 _VALID_TAGS = {"NNG", "NNP", "XR", "SL"}
 
+_INTENT_KEYWORDS = {
+    "housing": {"주거", "주택", "월세", "전세", "임대", "보증금", "이사", "무주택"},
+    "employment": {"취업", "구직", "일자리", "고용", "면접", "직업", "훈련", "재취업"},
+    "education": {"교육", "훈련", "장학", "수강", "바우처", "평생교육", "디지털"},
+    "medical": {"의료", "의료비", "병원", "건강", "검진", "치료", "암환자", "임산부"},
+    "welfare": {"기초생활", "수급자", "차상위", "긴급복지", "생활안정", "한부모", "다문화", "돌봄"},
+}
+
+_SUPPORT_POLICY_TERMS = {
+    "지원", "수당", "급여", "장려금", "보조", "바우처", "장학금", "임대", "대출", "복지", "정책"
+}
+
+_GENERIC_FACILITY_TERMS = {
+    "할인", "이용요금", "입장료", "관람", "주차", "주차장", "체육시설", "강습", "프로그램", "센터", "도서관",
+    "골프", "체육", "경기장", "운영", "견학"
+}
+
+_DEMOGRAPHIC_KEYWORDS = {
+    "청년", "중장년", "고령", "노인", "여성", "경력단절", "장애인", "임산부",
+    "암환자", "한부모", "다문화", "기초생활수급자", "차상위", "1인 가구", "무주택"
+}
+
+_RANK_STOPWORDS = {
+    "지원", "정책", "제도", "관련", "대상", "주요", "유사", "같은", "있는", "있나요",
+    "궁금합니다", "알려주세요", "받을", "수", "위한", "에게", "성격", "공공", "복지",
+}
+
+_RANK_ALIAS_GROUPS = [
+    {"월세", "주거비", "임대료"},
+    {"전세", "전월세", "보증금", "전세보증금", "임차보증금"},
+    {"전세사기", "전세피해", "피해임차인", "주거안정"},
+    {"무주택", "주택", "주거", "주거급여"},
+    {"구직", "취업", "일자리", "재취업", "취업지원"},
+    {"직업훈련", "훈련", "국민내일배움카드", "내일배움카드", "훈련비"},
+    {"장학", "장학금", "대학생", "근로장학"},
+    {"평생교육", "바우처", "평생교육바우처"},
+    {"디지털", "디지털배움터", "역량", "문해"},
+    {"의료비", "진료비", "치료비", "의료"},
+    {"암환자", "암", "중증질환"},
+    {"장애인", "장애", "보조기기", "발달장애"},
+    {"임산부", "임신", "산모", "영유아"},
+    {"정신건강", "심리", "상담", "치료"},
+    {"기초생활", "수급자", "기초생활수급자", "생계"},
+    {"차상위", "저소득", "생활안정"},
+    {"긴급복지", "긴급", "위기가구", "위기"},
+    {"한부모", "조손", "청소년부모"},
+    {"다문화", "다문화가족", "외국인"},
+    {"고령자", "노인", "어르신", "돌봄", "치매"},
+    {"청년", "청소년"},
+    {"여성", "경력단절", "새로일하기"},
+    {"창업", "소상공인", "자영업", "재도전"},
+    {"자산형성", "저축", "희망저축", "내일저축", "청년도약"},
+]
+
+_STRICT_TARGET_TERMS = {
+    "청년", "무주택", "전세사기", "전세피해", "기초생활", "수급자", "차상위",
+    "한부모", "다문화", "장애인", "임산부", "암환자", "고령자", "노인",
+    "청소년", "소상공인", "자영업", "경력단절", "여성",
+}
+
+ENABLE_RANK_PRECISION_BONUS = os.getenv("BENEPICK_ENABLE_RANK_PRECISION_BONUS", "0") == "1"
+
+_REGION_ALIASES = {
+    "서울": {"서울", "서울시", "서울특별시"},
+    "부산": {"부산", "부산시", "부산광역시"},
+    "대구": {"대구", "대구시", "대구광역시"},
+    "인천": {"인천", "인천시", "인천광역시"},
+    "광주": {"광주", "광주시", "광주광역시"},
+    "대전": {"대전", "대전시", "대전광역시"},
+    "울산": {"울산", "울산시", "울산광역시"},
+    "세종": {"세종", "세종시", "세종특별자치시"},
+    "경기": {"경기", "경기도"},
+    "강원": {"강원", "강원도", "강원특별자치도"},
+    "충북": {"충북", "충청북도"},
+    "충남": {"충남", "충청남도"},
+    "전북": {"전북", "전라북도", "전북특별자치도"},
+    "전남": {"전남", "전라남도"},
+    "경북": {"경북", "경상북도"},
+    "경남": {"경남", "경상남도"},
+    "제주": {"제주", "제주도", "제주특별자치도"},
+}
+
 
 def _filter_tokens(token_list) -> list[str]:
     """형태소 분석 결과에서 유효 토큰만 추출 (공통 필터)"""
@@ -102,6 +184,186 @@ def tokenize_batch(texts: list[str]) -> list[list[str]]:
     return [_filter_tokens(token_list) for token_list in _kiwi.tokenize(texts)]
 
 
+def _detect_intents(query: str) -> set[str]:
+    intents: set[str] = set()
+    normalized = str(query or "").lower()
+    for intent, keywords in _INTENT_KEYWORDS.items():
+        if any(keyword in normalized for keyword in keywords):
+            intents.add(intent)
+    return intents
+
+
+def _extract_query_regions(query: str) -> set[str]:
+    normalized = str(query or "").lower()
+    detected: set[str] = set()
+    for canonical, aliases in _REGION_ALIASES.items():
+        if any(alias in normalized for alias in aliases):
+            detected.add(canonical)
+    return detected
+
+
+def _keyword_overlap_bonus(query: str, policy_name: str, evidence_text: str) -> float:
+    bonus = 0.0
+    normalized_query = str(query or "").lower()
+    normalized_name = str(policy_name or "").lower()
+    normalized_text = str(evidence_text or "").lower()
+    intents = _detect_intents(normalized_query)
+
+    for intent in intents:
+        keywords = _INTENT_KEYWORDS[intent]
+        if any(keyword in normalized_name for keyword in keywords):
+            bonus += 0.18
+        if any(keyword in normalized_text for keyword in keywords):
+            bonus += 0.08
+
+    if any(term in normalized_query for term in _SUPPORT_POLICY_TERMS):
+        if any(term in normalized_name for term in _SUPPORT_POLICY_TERMS):
+            bonus += 0.08
+        elif any(term in normalized_text for term in _SUPPORT_POLICY_TERMS):
+            bonus += 0.04
+
+    demographic_hits = [term for term in _DEMOGRAPHIC_KEYWORDS if term in normalized_query]
+    for term in demographic_hits:
+        if term in normalized_name:
+            bonus += 0.18
+        elif term in normalized_text:
+            bonus += 0.08
+        else:
+            bonus -= 0.06
+
+    if intents and not any(intent == "medical" for intent in intents):
+        if any(term in normalized_name for term in _GENERIC_FACILITY_TERMS):
+            bonus -= 0.12
+        elif any(term in normalized_text for term in _GENERIC_FACILITY_TERMS):
+            bonus -= 0.05
+    else:
+        if any(term in normalized_name for term in _GENERIC_FACILITY_TERMS) and "지원" in normalized_query:
+            bonus -= 0.08
+
+    if any(term in normalized_query for term in ("복지", "정책", "지원")):
+        if "견학" in normalized_name or "견학" in normalized_text:
+            bonus -= 0.15
+        if "운영" in normalized_name and not any(term in normalized_name for term in _SUPPORT_POLICY_TERMS):
+            bonus -= 0.08
+        if "교육" in normalized_query or "디지털" in normalized_query:
+            education_terms = ("교육", "훈련", "수강", "학습", "바우처", "장학", "디지털")
+            if not any(term in normalized_name for term in education_terms):
+                bonus -= 0.12
+            if not any(term in normalized_text for term in education_terms):
+                bonus -= 0.08
+        if "디지털" in normalized_query and "역량" in normalized_query:
+            digital_terms = ("디지털", "온라인", "코딩", "AI", "컴퓨터", "스마트", "역량")
+            if not any(term.lower() in normalized_name for term in digital_terms):
+                bonus -= 0.12
+            if not any(term.lower() in normalized_text for term in digital_terms):
+                bonus -= 0.08
+
+    return bonus
+
+
+def _compact_text(text: str) -> str:
+    return re.sub(r"[^0-9a-zA-Z가-힣]+", "", str(text or "").lower())
+
+
+def _rank_terms(query: str) -> set[str]:
+    terms = set()
+    for token in re.findall(r"[0-9A-Za-z가-힣]+", str(query or "").lower()):
+        if len(token) < 2 or token in _RANK_STOPWORDS:
+            continue
+        terms.add(token)
+    return terms
+
+
+def _matched_alias_groups(query_terms: set[str]) -> list[set[str]]:
+    groups = []
+    compact_terms = {_compact_text(term) for term in query_terms}
+    for group in _RANK_ALIAS_GROUPS:
+        compact_group = {_compact_text(term) for term in group}
+        if compact_terms & compact_group:
+            groups.append(group)
+    return groups
+
+
+def _rank_precision_bonus(
+    query: str,
+    policy_name: str,
+    evidence_text: str,
+    region: str = "",
+    user_region: str = "",
+) -> float:
+    """Small deterministic boost for rank precision inside the retrieved Top-K.
+
+    Dense/BM25 already brings candidates in. This function only nudges ordering
+    toward documents whose title/body explicitly matches policy-domain signals
+    from the query: policy name, region, target group, and support type.
+    """
+    query_terms = _rank_terms(query)
+    if not query_terms:
+        return 0.0
+
+    compact_query = _compact_text(query)
+    compact_name = _compact_text(policy_name)
+    compact_text = _compact_text(evidence_text)
+    compact_region = _compact_text(region)
+
+    bonus = 0.0
+
+    # Direct title matching is the most reliable signal for rank ordering.
+    title_hits = 0
+    body_hits = 0
+    for term in query_terms:
+        compact_term = _compact_text(term)
+        if not compact_term:
+            continue
+        if compact_term in compact_name:
+            title_hits += 1
+        elif compact_term in compact_text:
+            body_hits += 1
+
+    bonus += min(title_hits * 0.08, 0.40)
+    bonus += min(body_hits * 0.025, 0.15)
+
+    for group in _matched_alias_groups(query_terms):
+        compact_group = [_compact_text(term) for term in group]
+        if any(term and term in compact_name for term in compact_group):
+            bonus += 0.12
+        elif any(term and term in compact_text for term in compact_group):
+            bonus += 0.04
+
+    # If the query has a strict target group, missing that target should hurt.
+    for term in _STRICT_TARGET_TERMS & query_terms:
+        compact_term = _compact_text(term)
+        if compact_term in compact_name:
+            bonus += 0.10
+        elif compact_term in compact_text:
+            bonus += 0.04
+        else:
+            bonus -= 0.08
+
+    # Region should affect rank, but nationwide policies remain valid.
+    target_regions = set()
+    if user_region:
+        target_regions.add(str(user_region)[:2])
+    target_regions.update(_extract_query_regions(query))
+    for target in target_regions:
+        compact_target = _compact_text(target)
+        if not compact_target:
+            continue
+        if compact_target in compact_region:
+            bonus += 0.18
+        elif "전국" in str(region):
+            bonus += 0.06
+        else:
+            bonus -= 0.08
+
+    # Very broad facility/operation docs should not outrank benefit policies.
+    if any(term in compact_query for term in ("지원", "정책", "급여", "수당", "대출", "바우처")):
+        if any(_compact_text(term) in compact_name for term in _GENERIC_FACILITY_TERMS):
+            bonus -= 0.10
+
+    return bonus
+
+
 class HybridSearcher:
     def __init__(self, device="cuda"):
         print("하이브리드 검색기 초기화 중...")
@@ -117,10 +379,7 @@ class HybridSearcher:
             client = chromadb.PersistentClient(path=str(CHROMA_PATH))
             print(f"Chroma 연결: Persistent ({CHROMA_PATH})")
         self.collection = client.get_collection(COLLECTION_NAME)
-        # Railway 등에서 Chroma HNSW 로드가 불안정하면 numpy dense로 바로 고정.
-        self._chroma_vector_disabled = os.environ.get("BENEPICK_DISABLE_CHROMA_VECTOR", "0") == "1"
-        if self._chroma_vector_disabled:
-            print("[Searcher] Chroma vector disabled by env; using numpy dense fallback.")
+        self._chroma_vector_disabled = False
 
         # 정책 데이터 로드 (복지로 + 정부24)
         df_welfare = pd.read_csv(PROCESSED_PATH / "chunks.csv")
@@ -267,13 +526,42 @@ class HybridSearcher:
             for cid, score in bm25_scores.items()
         }
 
-        # 2-1. 지역 보정: 사용자 지역 또는 전국 정책에 +0.15 보정
+        # 2-0. 의도 기반 보정: 지원 정책형 질의는 핵심 키워드/정책형 표현을 보너스,
+        # 시설 할인/이용 안내형 문서는 페널티를 줘서 retrieval 잡음을 줄인다.
+        for cid in list(final_scores.keys()):
+            if cid not in self.df_chunks.index:
+                continue
+            row = self.df_chunks.loc[cid]
+            final_scores[cid] += _keyword_overlap_bonus(
+                query=query,
+                policy_name=str(row.get("policy_name", "")),
+                evidence_text=str(row.get("text", "")),
+            )
+            if ENABLE_RANK_PRECISION_BONUS:
+                final_scores[cid] += _rank_precision_bonus(
+                    query=query,
+                    policy_name=str(row.get("policy_name", "")),
+                    evidence_text=str(row.get("text", "")),
+                    region=str(row.get("region", "")),
+                    user_region=user_region,
+                )
+
+        # 2-1. 지역 보정: 명시 지역/전국 정책을 올리고, 다른 지역은 소폭 감점한다.
+        target_regions = set()
         if user_region:
-            region_short = user_region[:2]  # "서울특별시" → "서울"
-            for cid in final_scores:
-                row_region = str(self.df_chunks.loc[cid, "region"]) if cid in self.df_chunks.index else ""
-                if "전국" in row_region or region_short in row_region:
-                    final_scores[cid] += 0.15
+            target_regions.add(str(user_region)[:2])  # "서울특별시" → "서울"
+        target_regions.update(_extract_query_regions(query))
+        if target_regions:
+            for cid in list(final_scores.keys()):
+                if cid not in self.df_chunks.index:
+                    continue
+                row_region = str(self.df_chunks.loc[cid, "region"])
+                if "전국" in row_region:
+                    final_scores[cid] += 0.10
+                elif any(region in row_region for region in target_regions):
+                    final_scores[cid] += 0.18
+                else:
+                    final_scores[cid] -= 0.10
 
         # 3. Top-K 추출
         top_ids = sorted(final_scores, key=final_scores.get, reverse=True)[:top_k]

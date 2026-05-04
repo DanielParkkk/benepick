@@ -216,9 +216,13 @@ __marimo__/
 
 # Claude 관련 (로컬 설정)
 .claude/
+.codex-mainpush/
+.codex-pushfix/
+.codex-worktree-mainfix/
 
 # ChromaDB / 벡터 DB
-# chroma_db/는 배포 컨테이너에서도 필요하므로 git에 포함
+chroma.sqlite3
+chroma_db/
 rag/chroma_db/
 
 # 벡터 인덱스 파일들
@@ -234,3 +238,20 @@ frontend/tsconfig.tsbuildinfo
 # 결과 파일 / 실험 로그
 rag/interim_results_*.json
 rag/*.xlsx
+rag/judge_outputs/
+rag/eval_tmp_baseline/
+rag/eval_tmp_enriched/
+rag/eval_outputs*/
+rag/llm_compare_outputs*/
+rag/rank_order_outputs*/
+outputs/
+tmp/
+ppt_work/
+
+# 로컬 실험/백업 파일
+venv_broken/
+tmp_crag_probe.json
+CODEX_PATH_MEMORY.md
+DELETE_SAFETY_CHECKLIST.md
+*.zip
+*.ipynb

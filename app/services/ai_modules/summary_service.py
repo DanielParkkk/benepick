@@ -7,7 +7,11 @@ import urllib.error
 import urllib.request
 from typing import Dict, List, Optional
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except Exception:  # pragma: no cover - optional local convenience dependency
+    def load_dotenv(*args, **kwargs):
+        return False
 
 from .policy_heuristics import (
     assemble_korean_summary,
@@ -22,6 +26,7 @@ from .text_preprocessor import clean_policy_text
 class PolicySummaryService:
     SUMMARY_FIELDS = (
         "policy_name",
+        "summary",
         "target",
         "benefit",
         "conditions",
@@ -116,11 +121,18 @@ class PolicySummaryService:
             )
             merged[field] = self._clip_text(clean_fact_value(merged[field]))
 
+        for field in ("target", "benefit", "conditions", "how_to_apply"):
+            heuristic_value = self._clip_text(clean_fact_value(heuristic_facts.get(field, "")))
+            if heuristic_value and merged[field] == merged["policy_name"]:
+                merged[field] = heuristic_value
+            if field == "conditions" and heuristic_value and "소득" in heuristic_value and "소득" not in merged[field]:
+                merged[field] = heuristic_value
+
         if not merged["benefit"]:
             merged["benefit"] = self._clip_text(
                 choose_better_value(
                     heuristic_facts.get("benefit", ""),
-                    heuristic_facts.get("summary", ""),
+                    heuristic_facts.get("description", ""),
                 )
             )
 
@@ -167,6 +179,7 @@ class PolicySummaryService:
             "summary": summary,
             "summary_source": "qwen" if model_data else "heuristic",
             "policy_name": merged_fields["policy_name"],
+            "core_summary": merged_fields["summary"],
             "target": merged_fields["target"],
             "benefit": merged_fields["benefit"],
             "conditions": merged_fields["conditions"],

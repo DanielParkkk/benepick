@@ -94,6 +94,7 @@ def build_policy_summary(
     description: str | None,
     match_score: int,
     apply_status: ApplyStatus,
+    source_url: str | None,
     benefit_amount: int | None,
     benefit_amount_label: str | None,
     benefit_summary: str | None,
@@ -114,6 +115,7 @@ def build_policy_summary(
         match_score=match_score,
         score_level=score_level,
         apply_status=apply_status,
+        source_url=source_url,
         benefit_amount=benefit_amount,
         benefit_amount_label=benefit_amount_label,
         benefit_summary=benefit_summary,
@@ -146,6 +148,12 @@ def build_summary_from_master(
     analysis_result = None
     if use_analysis_state:
         analysis_result = db.execute(select(AnalysisResultState).where(AnalysisResultState.policy_id == master.policy_id)).scalar_one_or_none()
+    match_score = analysis_result.match_score if analysis_result else fallback_score
+    source_url = (
+        (application.application_url if application else None)
+        or master.application_url
+        or master.source_url
+    )
 
     badge_items = [master.source.upper()]
     if master.managing_agency:
@@ -158,12 +166,16 @@ def build_summary_from_master(
         else:
             badge_items.append(f"최대 {benefit.benefit_amount_value:,}원")
 
+    if match_score < 30:
+        badge_items.append("참고용")
+
     return build_policy_summary(
         policy_id=master.policy_id,
         title=master.title,
         description=master.summary or master.description,
-        match_score=analysis_result.match_score if analysis_result else fallback_score,
+        match_score=match_score,
         apply_status=ApplyStatus(analysis_result.apply_status) if analysis_result else ApplyStatus.NEEDS_CHECK,
+        source_url=source_url,
         benefit_amount=benefit.benefit_amount_value if benefit else None,
         benefit_amount_label=analysis_result.benefit_amount_label if analysis_result else None,
         benefit_summary=(analysis_result.benefit_summary if analysis_result else (benefit.benefit_period_label if benefit else None)),
@@ -240,13 +252,14 @@ def build_analyzed_from_master(
         match_score=score,
         score_level=score_level,
         apply_status=apply_status,
+        source_url=((application.application_url if application else None) or master.application_url or master.source_url),
         eligibility_summary=eligibility_summary,
         blocking_reasons=blocking_reasons,
         recommended_actions=recommended_actions[:4],
         benefit_amount=benefit.benefit_amount_value if benefit else None,
         benefit_amount_label=(f"최대 {benefit.benefit_amount_value // 10000:,}만원" if benefit and benefit.benefit_amount_value and benefit.benefit_amount_value >= 10000 else (f"최대 {benefit.benefit_amount_value:,}원" if benefit and benefit.benefit_amount_value else None)),
         benefit_summary=benefit.benefit_period_label if benefit else None,
-        badge_items=badge_items[:3],
+        badge_items=(badge_items + (["참고용"] if score < 30 else []))[:3],
     )
 
 
@@ -257,6 +270,7 @@ def build_summary_from_analyzed(item: AnalyzedPolicy, *, index: int) -> PolicySu
         description=item.description,
         match_score=item.match_score,
         apply_status=item.apply_status,
+        source_url=item.source_url,
         benefit_amount=item.benefit_amount,
         benefit_amount_label=item.benefit_amount_label,
         benefit_summary=item.benefit_summary,

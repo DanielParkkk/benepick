@@ -27,16 +27,44 @@ class RagSearchResult:
 
 def _build_fallback_answer(final_docs: list[dict[str, object]]) -> str | None:
     policy_names: list[str] = []
+    source_lines: list[str] = []
+    seen_urls: set[str] = set()
     for item in final_docs[:3]:
         name = str(item.get("policy_name", "")).strip()
         if name and name not in policy_names:
             policy_names.append(name)
+        source_url = str(item.get("source_url", "")).strip()
+        if name and source_url and source_url not in seen_urls and len(source_lines) < 2:
+            seen_urls.add(source_url)
+            source_lines.append(f"- {name}: {source_url}")
 
     if not policy_names:
         return None
 
-    joined = ", ".join(policy_names)
-    return f"관련 정책 후보는 {joined} 등입니다. 상세 요약 생성이 지연되어 우선 추천 결과를 먼저 보여드립니다."
+    policy_lines = [f"- {name}" for name in policy_names[:3]]
+    if not source_lines:
+        source_lines = ["- 공식 출처 링크를 확인하지 못했습니다."]
+
+    return "\n".join(
+        [
+            "핵심 답변:",
+            "- 상세 요약 생성이 지연되어 우선 추천 결과를 먼저 보여드립니다.",
+            "",
+            "근거 정책:",
+            *policy_lines,
+            "",
+            "신청/확인 방법:",
+            "- 각 정책의 공식 링크에서 지원 대상, 지원 내용, 신청 기간을 확인해 주세요.",
+            "",
+            "확인 필요:",
+            "- 자동 요약이 지연된 상태이므로 최종 수급 여부는 공식 공고문 확인이 필요합니다.",
+            "",
+            "출처:",
+            *source_lines,
+        ]
+    )
+
+
 def normalize_reference(item: object) -> str | None:
     if isinstance(item, dict):
         for key in ("policy_id", "source_policy_id", "reference_id", "id"):

@@ -20,7 +20,8 @@ except ImportError:
 from langchain_core.messages import HumanMessage, SystemMessage
 from FlagEmbedding import FlagReranker
 
-load_dotenv()
+load_dotenv(override=True)
+DEFAULT_PROMPT_VARIANT = os.getenv("BENEPICK_RAG_PROMPT_VARIANT", "B").strip().upper() or "B"
 
 # ── LLM 초기화: GROQ_API_KEY 있으면 Groq, 없으면 Ollama ──
 import threading
@@ -113,6 +114,7 @@ ENABLE_RERANKER = os.getenv("BENEPICK_ENABLE_RERANKER", DEFAULT_ENABLE_RERANKER)
 FORCE_BM25_FALLBACK = os.getenv("BENEPICK_FORCE_BM25_FALLBACK", "0") == "1"
 RETRIEVAL_TOP_K = max(5, int(os.getenv("BENEPICK_RETRIEVAL_TOP_K", "15")))
 RETRIEVAL_ALPHA = float(os.getenv("BENEPICK_RETRIEVAL_ALPHA", "0.5"))
+RERANK_BLEND_WEIGHT = float(os.getenv("BENEPICK_RERANK_BLEND_WEIGHT", "0.25"))
 
 _QUERY_VALUE_MAP = {
     "SINGLE": "1인 가구",
@@ -313,12 +315,28 @@ def get_searcher():
                     _searcher = BM25FallbackSearcher()
                     _searcher_mode = "bm25_fallback"
                     return _searcher
-                try:
-                    _searcher = HybridSearcher(device="cuda" if _USE_CUDA else "cpu")
-                    _searcher_mode = "hybrid_dense"
-                except Exception as exc:
-                    print(f"[Searcher] Hybrid init failed: {exc}")
+                preferred_device = "cuda" if _USE_CUDA else "cpu"
+                devices_to_try = [preferred_device]
+                if preferred_device == "cuda":
+                    devices_to_try.append("cpu")
+
+                last_exc = None
+                for device in devices_to_try:
+                    try:
+                        print(f"[Searcher] Initializing hybrid searcher on {device}.")
+                        _searcher = HybridSearcher(device=device)
+                        _searcher_mode = f"hybrid_{device}"
+                        break
+                    except Exception as exc:
+                        last_exc = exc
+                        print(f"[Searcher] Hybrid init failed on {device}: {exc}")
+                        _searcher = None
+                        _searcher_mode = None
+
+                if _searcher is None:
                     print("[Searcher] Switching to BM25 fallback mode.")
+                    if last_exc is not None:
+                        print(f"[Searcher] Last hybrid init error: {last_exc}")
                     _searcher = BM25FallbackSearcher()
                     _searcher_mode = "bm25_fallback"
     return _searcher
@@ -379,14 +397,24 @@ def rerank(query: str, results: list, top_k: int = 5) -> list:
         print("[Rerank] disabled by BENEPICK_ENABLE_RERANKER=0 -> use search ranking")
         return sorted(results, key=lambda x: x.get("score", 0), reverse=True)[:top_k]
 
-    # CPU 환경에서 reranker 추론 시간이 길어지지 않도록 입력 후보를 제한한다.
-    texts = [r['evidence_text'] for r in results[:RETRIEVAL_TOP_K]]
+    original_scores = [float(r.get("score", 0.0) or 0.0) for r in results]
+    min_original = min(original_scores) if original_scores else 0.0
+    max_original = max(original_scores) if original_scores else 0.0
+    original_range = max(max_original - min_original, 1e-9)
+
+    texts = [r['evidence_text'] for r in results]
     pairs = [[query, text] for text in texts]
     scores = reranker.compute_score(pairs, normalize=True)
 
-    # score 업데이트 (팀 규칙: float 0~1)
-    for result, score in zip(results, scores):
-        result['score'] = round(float(score), 4)
+    # Domain result: generic rerankers can push policy-exact matches down.
+    # Blend reranker score with the original hybrid score instead of replacing it.
+    blend = min(max(RERANK_BLEND_WEIGHT, 0.0), 1.0)
+    for result, original_score, rerank_score in zip(results, original_scores, scores):
+        normalized_original = (original_score - min_original) / original_range
+        final_score = (1.0 - blend) * normalized_original + blend * float(rerank_score)
+        result["search_score"] = round(original_score, 4)
+        result["reranker_score"] = round(float(rerank_score), 4)
+        result["score"] = round(final_score, 4)
 
     reranked = sorted(results, key=lambda x: x['score'], reverse=True)
     return reranked[:top_k]
@@ -418,7 +446,19 @@ def crag_quality_check(query: str, results: list) -> list:
             results2 = get_searcher().search(relaxed, top_k=RETRIEVAL_TOP_K, alpha=0.6)
             if not results2:
                 return _fallback(query)
-            return rerank(query, results2, top_k=5)
+            reranked_retry = rerank(query, results2, top_k=5)
+            retry_quality = _score_quality(reranked_retry)
+            print(f"[CRAG] relaxed retry quality: {retry_quality:.3f}")
+            if retry_quality >= QUALITY_HIGH and not _is_broad_or_low_signal_query(query):
+                return reranked_retry
+            print("[CRAG] retry quality still weak or query is broad -> category fallback")
+            fallback_results = _fallback(query)
+            if fallback_results:
+                fallback_quality = _score_quality(fallback_results)
+                print(f"[CRAG] fallback quality: {fallback_quality:.3f}")
+                if fallback_quality >= retry_quality:
+                    return fallback_results
+            return reranked_retry
         except Exception as e:
             # Keep current docs on low-memory failures instead of crashing the whole request.
             print(f"[CRAG relaxed retry failed] {e} -> keep current docs")
@@ -495,6 +535,15 @@ def get_category_query(query: str) -> str:
     if not normalized:
         normalized = query
 
+    if "디지털" in normalized and any(keyword in normalized for keyword in ("교육", "역량", "훈련", "배움")):
+        return "디지털 역량 교육 지원"
+    if "평생교육" in normalized and "바우처" in normalized:
+        return "평생교육 바우처"
+    if "국비" in normalized or "직업훈련" in normalized:
+        return "국비 직업훈련 지원"
+    if "장학" in normalized or "대학생" in normalized:
+        return "대학생 장학금 지원"
+
     rules = [
         (("월세", "전세", "주거", "주택", "임대", "임차", "보증금", "무주택"), "청년 주거 지원"),
         (("취업", "구직", "실업", "실직", "면접", "청년수당", "고용", "국민취업", "훈련", "내일배움"), "청년 고용 지원"),
@@ -502,6 +551,7 @@ def get_category_query(query: str) -> str:
         (("자산", "적금", "저축", "금융", "도약계좌", "희망적금"), "청년 자산형성 지원"),
         (("생계", "수급", "긴급복지", "기초생활"), "저소득 생활 지원"),
         (("의료", "병원", "치료", "건강", "심리"), "의료·건강 지원"),
+        (("교육", "훈련", "수강", "바우처", "디지털"), "교육 훈련 지원"),
         (("출산", "육아", "보육", "양육", "아동"), "출산·육아 지원"),
         (("장애", "장애인"), "장애인 복지 지원"),
         (("노인", "연금", "기초연금"), "노인 복지 지원"),
@@ -517,15 +567,85 @@ def get_category_query(query: str) -> str:
     return normalized
 
 
+def _build_fallback_queries(query: str) -> list[str]:
+    normalized = relax_query(query)
+    if not normalized:
+        normalized = str(query or "").strip()
+
+    queries: list[str] = []
+
+    def add(candidate: str) -> None:
+        value = str(candidate or "").strip()
+        if value and value not in queries:
+            queries.append(value)
+
+    add(get_category_query(query))
+
+    if "디지털" in normalized and any(keyword in normalized for keyword in ("교육", "역량", "훈련", "배움")):
+        add("디지털 역량 교육 지원")
+        add("디지털 교육 지원")
+        add("디지털 배움 지원")
+        add("교육 훈련 지원")
+    if "평생교육" in normalized and "바우처" in normalized:
+        add("평생교육 바우처")
+        add("평생교육 지원")
+        add("교육 바우처")
+    if "국비" in normalized or "직업훈련" in normalized:
+        add("국비 직업훈련 지원")
+        add("직업훈련 지원")
+        add("교육 훈련 지원")
+    if "장학" in normalized or "대학생" in normalized:
+        add("대학생 장학금 지원")
+        add("장학금 지원")
+        add("교육 지원")
+
+    if any(keyword in normalized for keyword in ("교육", "훈련", "바우처", "디지털")):
+        add("교육 훈련 지원")
+    if any(keyword in normalized for keyword in ("의료", "건강", "암환자", "임산부")):
+        add("의료 건강 지원")
+    if any(keyword in normalized for keyword in ("주거", "월세", "전세", "보증금")):
+        add("청년 주거 지원")
+
+    add(normalized)
+    return queries[:5]
+
+
+def _score_quality(results: list[dict]) -> float:
+    if not results:
+        return 0.0
+    scores = [float(result.get("score", 0.0)) for result in results]
+    return (sum(scores) / len(scores)) if scores else 0.0
+
+
+def _is_broad_or_low_signal_query(query: str) -> bool:
+    normalized = str(query or "").strip().lower()
+    broad_markers = ("정책", "지원", "알려", "궁금", "추천", "맞춤", "있나요", "뭐가", "어떤")
+    specific_markers = ("월세", "전세", "암환자", "임산부", "차상위", "기초생활", "장학", "국비", "바우처")
+    has_broad = any(marker in normalized for marker in broad_markers)
+    has_specific = any(marker in normalized for marker in specific_markers)
+    token_count = len(re.findall(r"[0-9A-Za-z가-힣]+", normalized))
+    return has_broad and (not has_specific or token_count <= 4)
+
+
 def _fallback(query: str) -> list:
     """Fallback retrieval by category + rerank with original question."""
-    fallback_query = get_category_query(query)
-    print(f"[CRAG] 폴백 쿼리: '{fallback_query}'")
+    fallback_queries = _build_fallback_queries(query)
+    print(f"[CRAG] 폴백 쿼리들: {fallback_queries}")
     try:
-        candidates = get_searcher().search(fallback_query, top_k=RETRIEVAL_TOP_K, alpha=0.6)
-        if not candidates:
+        merged: dict[str, dict] = {}
+        for index, fallback_query in enumerate(fallback_queries):
+            candidates = get_searcher().search(fallback_query, top_k=15, alpha=0.6)
+            for candidate in candidates:
+                chunk_id = candidate["chunk_id"]
+                weighted_score = float(candidate.get("score", 0.0)) - (index * 0.02)
+                existing = merged.get(chunk_id)
+                if existing is None or weighted_score > float(existing.get("score", 0.0)):
+                    merged[chunk_id] = {**candidate, "score": round(weighted_score, 4)}
+
+        if not merged:
             return []
-        return rerank(query, candidates, top_k=5)
+        merged_candidates = sorted(merged.values(), key=lambda item: item.get("score", 0), reverse=True)[:25]
+        return rerank(query, merged_candidates, top_k=5)
     except Exception as e:
         print(f"[CRAG fallback failed] {e}")
         return []
@@ -539,14 +659,26 @@ def _clip_evidence_text(text: object, max_chars: int = 320) -> str:
     return normalized[: max_chars - 1].rstrip() + "..."
 
 
+def _clip_answer_text(text: object, max_chars: int = 900) -> str:
+    normalized = re.sub(r"\s+", " ", str(text or "")).strip()
+    if len(normalized) <= max_chars:
+        return normalized
+    return normalized[: max_chars - 1].rstrip() + "..."
+
+
 def generate_answer(query: str, docs: list, lang_code: str = "ko") -> str:
     """
     검색된 문서 기반 최종 답변 생성
     lang_code: "ko"/"en"/"vi"/"zh" (팀 규칙 — ISO 639-1)
     """
+    grounded_docs = docs[:3]
     context = "\n\n".join([
-        f"[{i+1}] {d['policy_name']}\n{_clip_evidence_text(d['evidence_text'])}"
-        for i, d in enumerate(docs[:3])
+        (
+            f"[{i+1}] 정책명: {d['policy_name']}\n"
+            f"근거: {_clip_evidence_text(d['evidence_text'])}\n"
+            f"출처: {str(d.get('source_url') or '').strip() or '없음'}"
+        )
+        for i, d in enumerate(grounded_docs)
     ])
 
     lang_prompt = {
@@ -558,23 +690,232 @@ def generate_answer(query: str, docs: list, lang_code: str = "ko") -> str:
 
     messages = [
         SystemMessage(content=f"""당신은 한국 복지 정책 전문 AI입니다.
-사용자 질문에 직접 답한 뒤, 관련 정책을 안내하세요.
+반드시 제공된 참고 문서 안의 정보만 사용해서 답변하세요.
 
-답변 순서:
-1. 핵심 답변: 질문에 바로 답하세요 (예: "네, 받을 수 있습니다" / "해당 지원은 ~입니다")
-2. 관련 정책: 정책명과 지원 대상·내용을 2~3줄로 간결히
-3. 신청 방법: 신청처 한 줄
+출력 형식:
+1. 핵심 답변
+2. 근거 정책
+3. 신청/확인 방법
+4. 확인 필요 사항
 
 규칙:
-- 첫 문장은 반드시 질문의 핵심에 직접 답할 것
-- 질문과 관련 없는 정책은 언급하지 말 것
-- 문서에 없는 내용은 절대 추측하지 말 것
+- 첫 문장은 질문의 핵심에 직접 답할 것
+- 참고 문서에 없는 금액, 대상, 기간, 자격 조건은 추측하지 말 것
+- 확실하지 않은 내용은 "확인 필요"라고 명시할 것
+- 관련 없는 정책은 언급하지 말 것
+- 답변은 간결하게 6문장 이내로 정리할 것
 - {lang_prompt}"""),
         HumanMessage(content=f"질문: {query}\n\n참고 문서:\n{context}\n\n답변:")
     ]
 
     response = llm.invoke(messages)
-    return response.content
+    answer = _clip_answer_text(response.content)
+
+    source_lines = []
+    for doc in grounded_docs[:2]:
+        source_url = str(doc.get("source_url") or "").strip()
+        if source_url:
+            source_lines.append(f"- {doc['policy_name']}: {source_url}")
+    if source_lines and "출처" not in answer:
+        answer = f"{answer}\n\n출처\n" + "\n".join(source_lines)
+
+    return answer
+
+
+def _format_structured_sources_v2(docs: list[dict], limit: int = 2) -> list[str]:
+    lines: list[str] = []
+    seen_urls: set[str] = set()
+    for doc in docs[:limit]:
+        policy_name = str(doc.get("policy_name", "")).strip() or "정책명 확인 필요"
+        source_url = str(doc.get("source_url", "")).strip()
+        if not source_url or source_url in seen_urls:
+            continue
+        seen_urls.add(source_url)
+        lines.append(f"- {policy_name}: {source_url}")
+    return lines
+
+
+def _build_structured_answer_fallback_v2(query: str, docs: list[dict]) -> str:
+    top_docs = docs[:2]
+    policy_names = [
+        str(doc.get("policy_name", "")).strip()
+        for doc in top_docs
+        if str(doc.get("policy_name", "")).strip()
+    ]
+    policy_lines = [f"- {name}" for name in policy_names] or [
+        "- 관련 정책은 검색되었지만 정책명을 다시 확인할 필요가 있습니다."
+    ]
+    source_lines = _format_structured_sources_v2(docs)
+    if not source_lines:
+        source_lines = ["- 공식 출처 링크를 확인하지 못했습니다."]
+
+    return "\n".join(
+        [
+            "핵심 답변:",
+            f"- '{query}'와 관련해 우선 확인할 정책 후보를 찾았습니다.",
+            "",
+            "근거 정책:",
+            *policy_lines,
+            "",
+            "신청/확인 방법:",
+            "- 각 정책의 공식 링크에서 지원 대상, 지원 내용, 신청 기간을 확인해 주세요.",
+            "- 거주 지역과 소득 구간이 문서 조건과 일치하는지 다시 확인해 주세요.",
+            "",
+            "확인 필요:",
+            "- 검색된 문서만으로는 최종 수급 여부를 확정할 수 없습니다.",
+            "- 세부 금액, 기간, 추가 자격 조건은 공식 공고문 확인이 필요합니다.",
+            "",
+            "출처:",
+            *source_lines,
+        ]
+    )
+
+
+def _normalize_structured_answer_v2(answer: str, query: str, docs: list[dict]) -> str:
+    normalized = str(answer or "").strip()
+    required_headers = ["핵심 답변", "근거 정책", "신청/확인 방법", "확인 필요", "출처"]
+    if not normalized:
+        return _build_structured_answer_fallback_v2(query, docs)
+
+    if all(header in normalized for header in required_headers):
+        return normalized
+
+    body_lines = [line.strip("- ").strip() for line in re.split(r"[\r\n]+", normalized) if line.strip()]
+    if not body_lines:
+        return _build_structured_answer_fallback_v2(query, docs)
+
+    policy_lines = [
+        f"- {str(doc.get('policy_name', '')).strip()}"
+        for doc in docs[:2]
+        if str(doc.get("policy_name", "")).strip()
+    ] or ["- 검색 결과 정책명을 다시 확인할 필요가 있습니다."]
+    source_lines = _format_structured_sources_v2(docs)
+    if not source_lines:
+        source_lines = ["- 공식 출처 링크를 확인하지 못했습니다."]
+
+    return "\n".join(
+        [
+            "핵심 답변:",
+            f"- {body_lines[0]}",
+            "",
+            "근거 정책:",
+            *policy_lines,
+            "",
+            "신청/확인 방법:",
+            f"- {body_lines[1] if len(body_lines) > 1 else '지원 대상, 신청 기간, 제출 서류를 공식 링크에서 다시 확인해 주세요.'}",
+            "",
+            "확인 필요:",
+            f"- {body_lines[2] if len(body_lines) > 2 else '문서에 없는 금액, 기간, 추가 자격 조건은 공식 공고문 확인이 필요합니다.'}",
+            "",
+            "출처:",
+            *source_lines,
+        ]
+    )
+
+
+def _build_answer_system_prompt_v2(lang_prompt: str, variant: str = DEFAULT_PROMPT_VARIANT) -> str:
+    variant = str(variant or DEFAULT_PROMPT_VARIANT).upper()
+    if variant == "B":
+        return f"""당신은 한국 복지 정책 전문 AI입니다.
+반드시 제공된 참고 문서 안의 정보만 사용해서 답변하세요.
+
+답변은 반드시 아래 다섯 섹션을 그대로 지키세요.
+핵심 답변:
+- 질문에 바로 답하는 한 줄 요약
+
+근거 정책:
+- 정책명
+- 정책별로 왜 관련 있는지 짧게 설명
+
+신청/확인 방법:
+- 지원 대상 확인
+- 혜택/지원 내용 확인
+- 신청 방법 또는 확인 경로 안내
+
+확인 필요:
+- 문서에 없거나 불확실한 조건
+- 지역/소득/기간처럼 추가 확인이 필요한 요소
+
+출처:
+- 정책명: URL
+
+규칙:
+- 첫 문장은 질문에 직접 답할 것
+- 참고 문서에 없는 금액, 대상, 기간, 자격 조건은 추측하지 말 것
+- 확실하지 않은 내용은 반드시 '확인 필요' 섹션에 적을 것
+- 관련 없는 정책은 언급하지 말 것
+- 각 섹션은 1~2개 bullet 이내로 간결하게 작성할 것
+- 신청/확인 방법 섹션에는 사용자가 바로 확인할 다음 행동을 최소 2개 이상 제시할 것
+- {lang_prompt}"""
+
+    return f"""당신은 한국 복지 정책 전문 AI입니다.
+반드시 제공된 참고 문서 안의 정보만 사용해서 답변하세요.
+
+답변은 반드시 아래 다섯 섹션을 그대로 지키세요.
+핵심 답변:
+- ...
+
+근거 정책:
+- ...
+
+신청/확인 방법:
+- ...
+
+확인 필요:
+- ...
+
+출처:
+- 정책명: URL
+
+규칙:
+- 첫 문장은 질문에 직접 답할 것
+- 참고 문서에 없는 금액, 대상, 기간, 자격 조건은 추측하지 말 것
+- 확실하지 않은 내용은 '확인 필요' 섹션에 적을 것
+- 관련 없는 정책은 언급하지 말 것
+- 각 섹션은 1~2개 bullet 이내로 간결하게 작성할 것
+- {lang_prompt}"""
+
+
+def generate_answer(
+    query: str,
+    docs: list,
+    lang_code: str = "ko",
+    prompt_variant: str = DEFAULT_PROMPT_VARIANT,
+) -> str:
+    """
+    Generate a grounded, structured answer from retrieved policy documents.
+    This redefinition intentionally overrides the earlier implementation.
+    """
+    grounded_docs = docs[:3]
+    context = "\n\n".join(
+        [
+            (
+                f"[{i+1}] 정책명: {d['policy_name']}\n"
+                f"근거: {_clip_evidence_text(d['evidence_text'])}\n"
+                f"출처: {str(d.get('source_url') or '').strip() or '없음'}"
+            )
+            for i, d in enumerate(grounded_docs)
+        ]
+    )
+
+    lang_prompt = {
+        "ko": "한국어로 답변하세요.",
+        "en": "Please answer in English.",
+        "vi": "Vui lòng trả lời bằng tiếng Việt.",
+        "zh": "请用中文回答。",
+    }.get(lang_code, "한국어로 답변하세요.")
+
+    messages = [
+        SystemMessage(
+            content=_build_answer_system_prompt_v2(lang_prompt, prompt_variant)
+        ),
+        HumanMessage(content=f"질문: {query}\n\n참고 문서:\n{context}\n\n답변:"),
+    ]
+
+    response = llm.invoke(messages)
+    answer = _clip_answer_text(getattr(response, "content", response), max_chars=1200)
+    answer = _normalize_structured_answer_v2(answer, query, grounded_docs)
+    return _clip_answer_text(answer, max_chars=1200)
 
 
 def _map_query_value(value: object) -> str:
@@ -615,10 +956,40 @@ def _sanitize_query_seed(query: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def _expand_domain_aliases(query: str) -> list[str]:
+    normalized_query = re.sub(r"\s+", " ", str(query or "")).strip().lower()
+    if not normalized_query:
+        return []
+
+    alias_groups: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
+        (("영유아 양육비", "양육비 지원"), ("보육료", "유아학비", "양육수당", "아동수당")),
+        (("조손가정",), ("가족돌봄", "아동돌봄", "가족지원")),
+        (("장애아동 가족 양육", "장애아동 양육"), ("장애아동", "발달재활", "가족지원")),
+        (("병원비 지원", "의료비 지원", "저소득층 병원비"), ("의료비", "본인부담금", "진료비")),
+        (("난임", "난임 시술비"), ("난임부부 시술비", "보조생식술", "의료비 지원")),
+        (("채무조정", "금융 취약계층"), ("신용회복", "서민금융", "채무조정 지원")),
+        (("자산형성", "중장년 자산형성"), ("희망저축계좌", "내일저축계좌", "자산형성지원")),
+    ]
+
+    expanded: list[str] = []
+    seen: set[str] = set()
+    for triggers, aliases in alias_groups:
+        if not any(trigger in normalized_query for trigger in triggers):
+            continue
+        for alias in aliases:
+            key = alias.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            expanded.append(alias)
+    return expanded
+
+
 def build_search_query(query: str, user_condition: dict) -> str:
     """Build a human-readable retrieval query from profile fields."""
     seed = _sanitize_query_seed(query)
     parts = [seed] if seed else []
+    parts.extend(_expand_domain_aliases(seed or query))
 
     if user_condition:
         region = str(user_condition.get("region", "")).strip()
@@ -669,9 +1040,9 @@ def build_search_query(query: str, user_condition: dict) -> str:
         seen.add(key)
         deduped_parts.append(text)
 
-    enriched = " ".join(deduped_parts) if deduped_parts else str(query).strip()
-    print(f"[Query enrich] '{query}' -> '{enriched}'")
-    return enriched
+    normalized_query = " ".join(deduped_parts) if deduped_parts else str(query).strip()
+    print(f"[Query normalized] '{query}' -> '{normalized_query}'")
+    return normalized_query
 
 
 def retrieve_rag_documents(user_query: str, user_condition: dict | None = None) -> dict:

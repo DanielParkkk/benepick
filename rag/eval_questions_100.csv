@@ -1,0 +1,101 @@
+﻿question,category,query_type,notes,selection_note
+서울 청년 월세 지원 받을 수 있나요?,housing,direct,,12_selected
+전세사기 피해자 주거 지원 정책이 있나요?,housing,direct,,12_selected
+무주택 청년 전월세 지원 제도가 있나요?,housing,direct,,12_selected
+월세가 비싼 청년에게 도움이 되는 정책이 있나요?,housing,direct,,12_selected
+전월세 보증금 대출 이자 지원 같은 정책이 있나요?,housing,direct,,12_selected
+전세대출 상환이 부담되는 청년 지원 정책이 있나요?,housing,direct,,12_selected
+고시원이나 반지하 거주 청년 대상 주거 지원이 있나요?,housing,direct,,12_selected
+무주택 신혼부부 주거 지원 정책을 알려주세요.,housing,direct,,12_selected
+서울에서 자취하는 청년에게 맞는 주거 지원이 있나요?,housing,direct,,12_selected
+전세사기 피해로 이사가 필요한 경우 지원이 있나요?,housing,direct,,12_selected
+임차보증금 마련이 어려운 청년을 위한 정책이 있나요?,housing,direct,,12_selected
+고령자 주거 개보수나 주거 안전 지원이 있나요?,housing,direct,,12_selected
+미취업 청년 구직 지원 정책이 있나요?,employment,direct,,12_selected
+직업훈련비를 지원하는 정책이 궁금합니다.,employment,direct,,12_selected
+중장년 재취업 훈련 지원 정책이 있나요?,employment,direct,,12_selected
+구직활동 중 생활비를 지원하는 정책이 있나요?,employment,direct,,12_selected
+직업훈련 참여 중 교통비나 식비 지원이 있나요?,employment,direct,,12_selected
+중소기업 취업 청년을 위한 장려금이 있나요?,employment,direct,,12_selected
+장기 실업자를 위한 재취업 지원이 있나요?,employment,direct,,12_selected
+장애인 취업 훈련 및 취업 연계 정책이 있나요?,employment,direct,,12_selected
+자영업 폐업 후 재취업 훈련 지원이 있나요?,employment,direct,,12_selected
+이력서·자소서 컨설팅이나 취업상담 지원이 있나요?,employment,direct,,12_selected
+프리랜서나 플랫폼 노동자를 위한 재취업 지원이 있나요?,employment,direct,,12_selected
+출산·육아 이후 복직 준비 지원 정책이 있나요?,employment,direct,,12_selected
+청년 교육훈련 장학 지원이 있나요?,education,direct,,12_selected
+대학생 장학금 성격의 복지 정책이 있나요?,education,direct,,12_selected
+디지털 역량 교육 지원 정책이 있나요?,education,direct,,12_selected
+대학생 등록금 부담 완화 정책이 있나요?,education,direct,,12_selected
+검정고시 준비생 교육 지원 정책이 있나요?,education,direct,,12_selected
+직장인을 위한 야간·온라인 교육 지원이 있나요?,education,direct,,12_selected
+청소년 진로체험이나 진로상담 지원이 있나요?,education,direct,,12_selected
+교육 소외계층 디지털 기기 지원 정책이 있나요?,education,direct,,12_selected
+대학원생 연구장학금과 비슷한 공공 지원이 있나요?,education,direct,,12_selected
+중장년층 디지털 문해 교육 지원이 있나요?,education,direct,,12_selected
+저소득 청년 자기계발 지원 정책이 있나요?,education,direct,,12_selected
+학교 밖 청소년 교육지원 정책을 알려주세요.,education,direct,,12_selected
+의료비 부담 완화 정책이 궁금합니다.,medical,direct,,13_selected
+장애인 의료비 지원 정책이 있나요?,medical,direct,,13_selected
+정신건강 상담/치료 지원 정책이 있나요?,medical,direct,,13_selected
+중증질환 치료비 지원 제도가 있나요?,medical,direct,,13_selected
+어르신 치과 진료비 지원 정책이 있나요?,medical,direct,,13_selected
+산후 우울 상담이나 심리 지원 정책이 있나요?,medical,direct,,13_selected
+아동 재활치료비 지원 정책이 있나요?,medical,direct,,13_selected
+장기 입원 환자 가족을 위한 지원이 있나요?,medical,direct,,13_selected
+보청기나 휠체어 같은 보조기기 지원이 있나요?,medical,direct,,13_selected
+건강검진 추가 지원 정책이 있나요?,medical,direct,,13_selected
+치매 조기검진과 돌봄 연계 지원이 있나요?,medical,direct,,13_selected
+발달장애인 치료·재활 지원 정책이 있나요?,medical,direct,,13_selected
+중증장애인 방문진료나 건강관리 지원이 있나요?,medical,direct,,13_selected
+기초생활수급자 대상 주요 지원 정책은?,basic_livelihood,direct,,13_selected
+긴급복지 지원제도 신청 조건이 궁금합니다.,basic_livelihood,direct,,13_selected
+에너지 바우처 같은 지원 정책이 있나요?,basic_livelihood,direct,,13_selected
+주거급여와 함께 받을 수 있는 생활지원이 있나요?,basic_livelihood,direct,,13_selected
+겨울철 난방비 지원 정책이 있나요?,basic_livelihood,direct,,13_selected
+위기 가구를 위한 생활비 지원 제도가 있나요?,basic_livelihood,direct,,13_selected
+기초생활수급자 자활 지원 정책이 있나요?,basic_livelihood,direct,,13_selected
+저소득 청년 생활비 지원 정책이 있나요?,basic_livelihood,direct,,13_selected
+고립·은둔 청년 생활안정 지원 정책이 있나요?,basic_livelihood,direct,,13_selected
+주민센터에서 신청 가능한 생계형 지원 정책이 있나요?,basic_livelihood,direct,,13_selected
+복지 위기 알림서비스와 연결되는 실제 지원 정책이 있나요?,basic_livelihood,direct,,13_selected
+기초생활수급자 자녀를 위한 추가 지원 정책이 있나요?,basic_livelihood,direct,,13_selected
+복지멤버십으로 확인할 수 있는 대표 지원 정책이 뭐가 있나요?,basic_livelihood,direct,,13_selected
+한부모가정 지원 정책이 있나요?,family,direct,,13_selected
+아이돌봄서비스 같은 육아 지원 정책이 있나요?,family,direct,,13_selected
+영유아 양육비 지원 정책을 알려주세요.,family,direct,,13_selected
+아동수당 외에 추가로 받을 수 있는 정책이 있나요?,family,direct,,13_selected
+조손가정 지원 정책이 궁금합니다.,family,direct,,13_selected
+청소년 부모 가정 지원 정책이 있나요?,family,direct,,13_selected
+입양 가정 지원 정책이 있나요?,family,direct,,13_selected
+학대 피해 아동 보호·상담 지원 정책이 있나요?,family,direct,,13_selected
+육아휴직 급여 외에 받을 수 있는 지원이 있나요?,family,direct,,13_selected
+장애아동 가족 양육 지원 정책이 있나요?,family,direct,,13_selected
+초등돌봄 연계 지원 정책이 있나요?,family,direct,,13_selected
+보호종료아동 자립 지원 정책이 있나요?,family,direct,,13_selected
+경계선지능 아동·청소년 가족 지원 정책이 있나요?,family,direct,,13_selected
+고령자 돌봄 지원 정책이 궁금합니다.,elderly_disability,direct,,12_selected
+기초연금 외에 받을 수 있는 지원이 있나요?,elderly_disability,direct,,12_selected
+치매 환자 가족 지원 정책이 있나요?,elderly_disability,direct,,12_selected
+발달장애인 낮활동 지원 정책이 있나요?,elderly_disability,direct,,12_selected
+청각장애인 의사소통 지원 정책이 있나요?,elderly_disability,direct,,12_selected
+중증장애인 자립생활 지원 정책이 있나요?,elderly_disability,direct,,12_selected
+경로당이나 노인복지관 이용 관련 지원이 있나요?,elderly_disability,direct,,12_selected
+장애인 주거편의 개선 지원이 있나요?,elderly_disability,direct,,12_selected
+노인 장기요양과 연계되는 공공지원이 있나요?,elderly_disability,direct,,12_selected
+보호자 없는 장애인 긴급돌봄 지원이 있나요?,elderly_disability,direct,,12_selected
+장애인 평생교육 지원 정책이 있나요?,elderly_disability,direct,,12_selected
+치매안심센터와 연결되는 실제 지원 정책이 있나요?,elderly_disability,direct,,12_selected
+청년 자산형성 지원 정책이 있나요?,finance_startup,direct,,13_selected
+근로장려금이나 자녀장려금 조건이 궁금합니다.,finance_startup,direct,,13_selected
+저소득 청년 저축 지원 정책을 알려주세요.,finance_startup,direct,,13_selected
+창업 준비 청년을 위한 공공 지원 정책이 있나요?,finance_startup,direct,,13_selected
+신용회복 중인 사람을 위한 지원 정책이 있나요?,finance_startup,direct,,13_selected
+청년 창업 교육과 자금 지원이 같이 있는 정책이 있나요?,finance_startup,direct,,13_selected
+저신용 소상공인 지원 정책이 있나요?,finance_startup,direct,,13_selected
+청년 희망저축계좌와 비슷한 정책이 있나요?,finance_startup,direct,,13_selected
+소상공인 디지털 전환 지원 정책이 있나요?,finance_startup,direct,,13_selected
+농어업인 금융 지원 정책이 있나요?,finance_startup,direct,,13_selected
+창업 실패 후 재도전 지원 정책이 있나요?,finance_startup,direct,,13_selected
+저축장려금 형태의 정책이 있나요?,finance_startup,direct,,13_selected
+청년 금융교육과 자산관리 지원 정책이 있나요?,finance_startup,direct,,13_selected
