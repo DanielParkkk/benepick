@@ -371,15 +371,27 @@ class HybridSearcher:
         # ChromaDB 연결 우선순위:
         # 1) HTTP 서버(localhost:8001) 2) 로컬 PersistentClient
         # 서버 기반 인덱스가 있는 경우 HNSW 로드 안정성이 더 높다.
-        try:
-            client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
-            client.heartbeat()
-            print(f"Chroma 연결: HTTP ({CHROMA_HOST}:{CHROMA_PORT})")
-        except Exception:
-            client = chromadb.PersistentClient(path=str(CHROMA_PATH))
-            print(f"Chroma 연결: Persistent ({CHROMA_PATH})")
-        self.collection = client.get_collection(COLLECTION_NAME)
-        self._chroma_vector_disabled = False
+        skip_chroma = os.getenv("BENEPICK_SKIP_CHROMA", "0") == "1"
+        self.collection = None
+        self._chroma_vector_disabled = True
+
+        if skip_chroma:
+            print("[Searcher] BENEPICK_SKIP_CHROMA=1 -> skip Chroma and use numpy dense fallback.")
+        else:
+            try:
+                client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
+                client.heartbeat()
+                print(f"Chroma 연결: HTTP ({CHROMA_HOST}:{CHROMA_PORT})")
+            except Exception:
+                client = chromadb.PersistentClient(path=str(CHROMA_PATH))
+                print(f"Chroma 연결: Persistent ({CHROMA_PATH})")
+
+            try:
+                self.collection = client.get_collection(COLLECTION_NAME)
+                self._chroma_vector_disabled = False
+            except Exception as exc:
+                print(f"[Searcher] Chroma collection unavailable: {exc}")
+                print("[Searcher] Using numpy dense fallback instead.")
 
         # 정책 데이터 로드 (복지로 + 정부24)
         df_welfare = pd.read_csv(PROCESSED_PATH / "chunks.csv")
