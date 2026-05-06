@@ -196,6 +196,8 @@ cmd = [
     '--modes', 'direct', 'evidence',
     '--limit', '3',
     '--judge', 'none',
+    '--num-predict', '220',
+    '--timeout', '120',
 ]
 print('Running:', ' '.join(cmd))
 subprocess.run(cmd, check=True)
@@ -215,6 +217,8 @@ cmd = [
     '--modes', 'direct', 'evidence',
     '--limit', '100',
     '--judge', judge_mode,
+    '--num-predict', '220',
+    '--timeout', '120',
 ]
 print('judge_mode =', judge_mode)
 print('Running:', ' '.join(cmd))
