@@ -1,0 +1,11 @@
+pandas
+numpy
+openpyxl
+requests
+python-dotenv
+rank-bm25
+kiwipiepy
+sentence-transformers
+chromadb
+openai
+tqdm
