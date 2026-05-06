@@ -45,6 +45,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--judge-model", default=DEFAULT_JUDGE_MODEL)
     parser.add_argument("--prompt-variant", default="B", choices=["A", "B"])
     parser.add_argument("--timeout", type=int, default=180)
+    parser.add_argument("--num-predict", type=int, default=450)
+    parser.add_argument("--num-ctx", type=int, default=4096)
     return parser.parse_args()
 
 
@@ -125,12 +127,16 @@ def build_prompt(question: str, docs: list[dict[str, Any]], mode: str, prompt_va
     )
 
 
-def ollama_chat(base_url: str, model: str, prompt: str, timeout: int) -> str:
+def ollama_chat(base_url: str, model: str, prompt: str, timeout: int, num_predict: int, num_ctx: int) -> str:
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
-        "options": {"temperature": 0.2},
+        "options": {
+            "temperature": 0.2,
+            "num_predict": num_predict,
+            "num_ctx": num_ctx,
+        },
     }
     response = requests.post(f"{base_url.rstrip('/')}/api/chat", json=payload, timeout=timeout)
     response.raise_for_status()
@@ -268,12 +274,15 @@ def main() -> None:
         searcher = get_searcher()
 
     rows: list[dict[str, Any]] = []
-    for _, row in questions.iterrows():
+    total_runs = len(questions) * len(model_specs) * len(args.modes)
+    run_index = 0
+    for question_index, row in questions.iterrows():
         question = str(row.get("question", "")).strip()
         category = str(row.get("category", "")).strip()
         docs = retrieve_docs(searcher, question, args.top_k, args.alpha) if need_retrieval else []
         for label, model in model_specs:
             for mode in args.modes:
+                run_index += 1
                 mode_docs = docs if mode == "evidence" else []
                 prompt = build_prompt(question, mode_docs, mode, args.prompt_variant, args.evidence_k)
                 start = time.perf_counter()
@@ -281,12 +290,29 @@ def main() -> None:
                 answer = ""
                 judge_result: dict[str, Any] = {}
                 try:
-                    answer = ollama_chat(args.ollama_url, model, prompt, args.timeout)
+                    print(
+                        f"[{run_index}/{total_runs}] start provider={label} model={model} "
+                        f"mode={mode} row={question_index} question={question[:60]}",
+                        flush=True,
+                    )
+                    answer = ollama_chat(
+                        args.ollama_url,
+                        model,
+                        prompt,
+                        args.timeout,
+                        args.num_predict,
+                        args.num_ctx,
+                    )
                     if use_judge:
                         judge_result = judge_with_openai(question, answer, mode_docs, args.judge_model)
                 except Exception as exc:
                     error = str(exc)
                 latency_ms = round((time.perf_counter() - start) * 1000, 2)
+                print(
+                    f"[{run_index}/{total_runs}] done provider={label} mode={mode} "
+                    f"latency_ms={latency_ms} error={bool(error)}",
+                    flush=True,
+                )
 
                 if error:
                     judge_result = {
