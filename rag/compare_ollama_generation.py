@@ -154,9 +154,13 @@ def ollama_chat(base_url: str, model: str, prompt: str, timeout: int, num_predic
 
 
 def get_searcher():
+    print("[setup] importing HybridSearcher", flush=True)
     from rag.searcher import HybridSearcher
 
-    return HybridSearcher()
+    print("[setup] initializing HybridSearcher", flush=True)
+    searcher = HybridSearcher()
+    print("[setup] HybridSearcher ready", flush=True)
+    return searcher
 
 
 def retrieve_docs(searcher: Any, question: str, top_k: int, alpha: float) -> list[dict[str, Any]]:
@@ -284,10 +288,20 @@ def write_outputs(detail: pd.DataFrame, output_dir: Path) -> dict[str, Path]:
 
 def main() -> None:
     args = parse_args()
+    print(
+        f"[setup] compare_ollama_generation started input={args.input} "
+        f"output_dir={args.output_dir} judge={args.judge} limit={args.limit}",
+        flush=True,
+    )
     questions = load_questions(args.input, args.limit)
     model_specs = parse_model_specs(args.models)
     use_judge = should_use_openai_judge(args.judge)
     need_retrieval = "evidence" in args.modes
+    print(
+        f"[setup] loaded_questions={len(questions)} models={model_specs} "
+        f"modes={args.modes} use_judge={use_judge} need_retrieval={need_retrieval}",
+        flush=True,
+    )
 
     searcher = None
     if need_retrieval:
