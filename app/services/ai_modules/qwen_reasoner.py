@@ -29,7 +29,10 @@ class QwenReasoner:
     ) -> None:
         load_dotenv()
 
-        self.model_name = model_name or os.getenv("QWEN_MODEL", "qwen3.5:4b")
+        self.model_name = model_name or os.getenv(
+            "REASONER_MODEL",
+            os.getenv("GEMMA_MODEL", os.getenv("QWEN_MODEL", "gemma4:latest")),
+        )
         self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
         self.timeout = float(timeout or os.getenv("OLLAMA_TIMEOUT", "300"))
         self.prompt_path = prompt_path or os.getenv("REJECT_GUIDE_PROMPT_PATH", "prompts/prompt_reject_guide.txt")
@@ -37,8 +40,8 @@ class QwenReasoner:
         print("Loading glossary...")
         self.glossary_df = self._load_glossary(csv_path)
         self.prompt_builder = self._build_prompt_builder()
-        print(f"Connecting Qwen model: {self.model_name}")
-        print("Qwen reasoner ready.")
+        print(f"Connecting reasoner model: {self.model_name}")
+        print("Reasoner ready.")
 
     def _build_prompt_builder(self) -> PromptBuilder:
         prompt_dir = os.path.dirname(self.prompt_path) or "prompts"

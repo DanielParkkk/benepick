@@ -76,7 +76,7 @@ class OutputGuard:
         *,
         fallback_text: str,
         expected_lang: str = "ko",
-        source_if_valid: str = "qwen",
+        source_if_valid: str = "gemma",
         source_if_fallback: str = "guard_fallback",
         max_fallback_len: int = 180,
     ) -> Dict[str, str]:
@@ -103,7 +103,7 @@ class OutputGuard:
         *,
         original_text: str,
         target_lang: str,
-        source_if_valid: str = "qwen",
+        source_if_valid: str = "gemma",
         source_if_fallback: str = "guard_fallback",
     ) -> Dict[str, str]:
         data = data or {}
@@ -140,7 +140,7 @@ class OutputGuard:
         target_lang: str = "ko",
         fallback_reason: str = "\uC608\uC815 \uAC00\uB2A5\uD55C \uBCF4\uC644 \uC870\uAC74\uC744 \uCD94\uAC00\uB85C \uD655\uC778\uD574\uC57C \uD569\uB2C8\uB2E4.",
         fallback_guide: str = "\uC815\uCC45 \uC6D0\uBB38\uC5D0\uC11C \uC138\uBD80 \uC790\uACA9 \uC694\uAC74\uACFC \uC2E0\uCCAD \uC870\uAC74\uC744 \uB2E4\uC2DC \uD655\uC778\uD574 \uC8FC\uC138\uC694.",
-        source_if_valid: str = "qwen",
+        source_if_valid: str = "gemma",
         source_if_fallback: str = "guard_fallback",
     ) -> Dict[str, object]:
         data = data or {}
@@ -181,7 +181,7 @@ class OutputGuard:
             target_lang=target_lang,
             fallback_reason=str(data.get("rejection_reason", "") or "\uC608\uC815 \uAC00\uB2A5\uD55C \uBCF4\uC644 \uC870\uAC74\uC744 \uCD94\uAC00\uB85C \uD655\uC778\uD574\uC57C \uD569\uB2C8\uB2E4."),
             fallback_guide=str(data.get("guide", "") or "\uC815\uCC45 \uC6D0\uBB38\uC5D0\uC11C \uC138\uBD80 \uC790\uACA9 \uC694\uAC74\uACFC \uC2E0\uCCAD \uC870\uAC74\uC744 \uB2E4\uC2DC \uD655\uC778\uD574 \uC8FC\uC138\uC694."),
-            source_if_valid=str(data.get("analysis_source", "") or "qwen"),
+            source_if_valid=str(data.get("analysis_source", "") or "gemma"),
         )
         guarded_translation = self.guard_translation(
             {"translated_text": data.get("summary", ""), "translation_source": data.get("translation_source", "")},

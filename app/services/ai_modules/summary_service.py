@@ -42,7 +42,10 @@ class PolicySummaryService:
     ) -> None:
         load_dotenv()
 
-        self.model_name = model_name or os.getenv("QWEN_MODEL", "qwen3.5:4b")
+        self.model_name = model_name or os.getenv(
+            "SUMMARY_MODEL",
+            os.getenv("GEMMA_MODEL", os.getenv("QWEN_MODEL", "gemma4:latest")),
+        )
         self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
         self.timeout = float(timeout or os.getenv("OLLAMA_TIMEOUT", "300"))
         self.prompt_path = prompt_path or os.getenv("SUMMARY_PROMPT_PATH", "prompts/prompt_summary.txt")
@@ -177,7 +180,7 @@ class PolicySummaryService:
         return {
             "language": "ko",
             "summary": summary,
-            "summary_source": "qwen" if model_data else "heuristic",
+            "summary_source": self.model_name if model_data else "heuristic",
             "policy_name": merged_fields["policy_name"],
             "core_summary": merged_fields["summary"],
             "target": merged_fields["target"],

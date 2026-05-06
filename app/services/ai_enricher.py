@@ -56,19 +56,19 @@ class PolicyAIEnricher:
         self._cache_misses = 0
 
         try:
-            default_model = os.getenv("QWEN_MODEL", "qwen3.5:4b")
+            default_model = os.getenv("GEMMA_MODEL", os.getenv("QWEN_MODEL", "gemma4:latest"))
             self.summary_service = PolicySummaryService(
-                model_name=os.getenv("QWEN_SUMMARY_MODEL", default_model),
+                model_name=os.getenv("SUMMARY_MODEL", os.getenv("QWEN_SUMMARY_MODEL", default_model)),
                 prompt_path=str(prompt_dir / "prompt_summary.txt"),
             )
             self.translation_service = PolicyTranslationService(
                 csv_path=csv_path,
-                model_name=os.getenv("QWEN_TRANSLATION_MODEL", default_model),
+                model_name=os.getenv("TRANSLATION_MODEL", os.getenv("QWEN_TRANSLATION_MODEL", default_model)),
                 prompt_path=str(prompt_dir / "prompt_translation.txt"),
             )
             self.reasoner = QwenReasoner(
                 csv_path=csv_path,
-                model_name=os.getenv("QWEN_REASONER_MODEL", default_model),
+                model_name=os.getenv("REASONER_MODEL", os.getenv("QWEN_REASONER_MODEL", default_model)),
                 prompt_path=str(prompt_dir / "prompt_reject_guide.txt"),
             )
         except Exception as exc:

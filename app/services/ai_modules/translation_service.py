@@ -54,7 +54,10 @@ class PolicyTranslationService:
     ) -> None:
         load_dotenv()
 
-        self.model_name = model_name or os.getenv("QWEN_MODEL", "qwen3.5:4b")
+        self.model_name = model_name or os.getenv(
+            "TRANSLATION_MODEL",
+            os.getenv("GEMMA_MODEL", os.getenv("QWEN_MODEL", "gemma4:latest")),
+        )
         self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
         self.timeout = float(timeout or os.getenv("OLLAMA_TIMEOUT", "300"))
         self.prompt_path = prompt_path or os.getenv("TRANSLATION_PROMPT_PATH", "prompts/prompt_translation.txt")
@@ -244,8 +247,11 @@ class PolicyTranslationService:
     def _candidate_models(self, target_lang: str) -> List[str]:
         candidates: list[str] = []
 
-        env_specific = os.getenv(f"QWEN_TRANSLATION_MODEL_{target_lang.upper()}")
-        env_generic = os.getenv("QWEN_TRANSLATION_MODEL")
+        env_specific = (
+            os.getenv(f"GEMMA_TRANSLATION_MODEL_{target_lang.upper()}")
+            or os.getenv(f"QWEN_TRANSLATION_MODEL_{target_lang.upper()}")
+        )
+        env_generic = os.getenv("GEMMA_TRANSLATION_MODEL") or os.getenv("QWEN_TRANSLATION_MODEL")
 
         if env_specific:
             candidates.append(env_specific)
@@ -357,6 +363,6 @@ class PolicyTranslationService:
         return {
             "language": target_lang,
             "translated_text": translated_text,
-            "translation_source": "qwen",
+            "translation_source": self.model_name,
             "is_fallback": False,
         }

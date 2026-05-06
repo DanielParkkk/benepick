@@ -41,7 +41,7 @@ def _init_groq_llm():
 
 def _init_ollama_llm():
     from langchain_ollama import ChatOllama
-    model = os.getenv("OLLAMA_MODEL", "qwen3.5:4b")
+    model = os.getenv("OLLAMA_MODEL", os.getenv("GEMMA_MODEL", "gemma4:latest"))
     return ChatOllama(model=model, temperature=0.3, num_predict=512), f"Ollama ({model})"
 
 
@@ -58,7 +58,9 @@ def _build_llm():
     prod_provider = os.getenv("BENEPICK_PROD_PROVIDER", "groq").strip().lower()
 
     provider_candidates = []
-    if provider_override in {"openai", "groq", "ollama"}:
+    if provider_override == "gemma":
+        provider_candidates.append("ollama")
+    elif provider_override in {"openai", "groq", "ollama"}:
         provider_candidates.append(provider_override)
     elif llm_mode == "experiment":
         provider_candidates.extend([experiment_provider, "openai", "groq", "ollama"])

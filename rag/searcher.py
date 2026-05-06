@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import chromadb
 import os
+import re
 import shutil
 from pathlib import Path
 from rank_bm25 import BM25Okapi
@@ -38,11 +39,32 @@ def _resolve_chroma_path() -> Path:
 
 CHROMA_PATH = _resolve_chroma_path()
 COLLECTION_NAME = "benepick_policies"
-MODEL_NAME = "BAAI/bge-m3"
+MODEL_NAME = os.environ.get("BENEPICK_EMBED_MODEL", "BAAI/bge-m3")
 CHROMA_HOST = os.environ.get("CHROMA_HOST", "localhost")
 CHROMA_PORT = int(os.environ.get("CHROMA_PORT", "8001"))
-WELFARE_EMBEDDINGS_PATH = PROCESSED_PATH / "embeddings.npy"
-GOV24_EMBEDDINGS_PATH = PROCESSED_PATH / "gov24" / "embeddings.npy"
+
+
+def _embedding_slug(model_name: str) -> str:
+    return re.sub(r"[^0-9A-Za-z._-]+", "_", str(model_name or "").strip()).strip("_").lower()
+
+
+def _resolve_embedding_paths(model_name: str) -> tuple[Path, Path]:
+    welfare_override = os.environ.get("BENEPICK_WELFARE_EMBEDDINGS_PATH")
+    gov24_override = os.environ.get("BENEPICK_GOV24_EMBEDDINGS_PATH")
+    if welfare_override and gov24_override:
+        return Path(welfare_override), Path(gov24_override)
+
+    if model_name == "BAAI/bge-m3":
+        return PROCESSED_PATH / "embeddings.npy", PROCESSED_PATH / "gov24" / "embeddings.npy"
+
+    slug = _embedding_slug(model_name)
+    return (
+        PROCESSED_PATH / f"embeddings_{slug}.npy",
+        PROCESSED_PATH / "gov24" / f"embeddings_{slug}.npy",
+    )
+
+
+WELFARE_EMBEDDINGS_PATH, GOV24_EMBEDDINGS_PATH = _resolve_embedding_paths(MODEL_NAME)
 
 # KIWI_MODEL_PATH: 한글 경로에서 C 확장이 모델을 못 여는 문제 우회 (Windows 로컬 전용)
 # Railway/Linux 등 배포 환경에서는 환경변수 미설정 → kiwipiepy 기본 경로 자동 사용
@@ -404,9 +426,14 @@ class HybridSearcher:
         print(f"전체 정책 로드: {len(self.df_chunks)}개")
         self._load_dense_embeddings()
 
-        # BGE-M3 모델 로드
-        print("BGE-M3 모델 로딩 중...")
-        self.model = SentenceTransformer(MODEL_NAME, device=device)
+        # Dense embedding model load.
+        print(f"Embedding model loading: {MODEL_NAME}")
+        trust_remote_code = os.getenv("BENEPICK_EMBED_TRUST_REMOTE_CODE", "0") == "1"
+        model_kwargs = {"device": device, "trust_remote_code": trust_remote_code}
+        hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_HUB_TOKEN")
+        if hf_token:
+            model_kwargs["token"] = hf_token
+        self.model = SentenceTransformer(MODEL_NAME, **model_kwargs)
 
         # BM25 초기화 (캐시 우선 로딩)
         import pickle, hashlib
@@ -447,6 +474,18 @@ class HybridSearcher:
 
     def _load_dense_embeddings(self) -> None:
         """Dense fallback용 사전 계산 임베딩 로드 (Chroma 쿼리 실패 대비)."""
+        missing = [
+            str(path)
+            for path in (WELFARE_EMBEDDINGS_PATH, GOV24_EMBEDDINGS_PATH)
+            if not path.exists()
+        ]
+        if missing:
+            raise FileNotFoundError(
+                "Dense embedding files are missing for "
+                f"BENEPICK_EMBED_MODEL={MODEL_NAME}. "
+                "Build them first with rag/build_embedding_variants.py. "
+                f"Missing: {missing}"
+            )
         welfare_embeddings = np.load(WELFARE_EMBEDDINGS_PATH).astype(np.float32, copy=False)
         gov24_embeddings = np.load(GOV24_EMBEDDINGS_PATH).astype(np.float32, copy=False)
         dense_embeddings = np.vstack([welfare_embeddings, gov24_embeddings]).astype(np.float32, copy=False)
