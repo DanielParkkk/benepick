@@ -132,6 +132,10 @@ def ollama_chat(base_url: str, model: str, prompt: str, timeout: int, num_predic
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
+        # Some reasoning-capable local models can spend the whole token budget
+        # on hidden/thinking text and return an empty content field. Disable
+        # thinking when the Ollama version/model supports it.
+        "think": False,
         "options": {
             "temperature": 0.2,
             "num_predict": num_predict,
@@ -141,7 +145,12 @@ def ollama_chat(base_url: str, model: str, prompt: str, timeout: int, num_predic
     response = requests.post(f"{base_url.rstrip('/')}/api/chat", json=payload, timeout=timeout)
     response.raise_for_status()
     data = response.json()
-    return str(data.get("message", {}).get("content", "")).strip()
+    message = data.get("message", {}) or {}
+    # Newer Ollama responses may separate final content and thinking content.
+    # Prefer final content, but keep a fallback so blank responses are visible
+    # in experiment outputs instead of silently becoming NaN/empty.
+    content = message.get("content") or data.get("response") or message.get("thinking") or ""
+    return str(content).strip()
 
 
 def get_searcher():
@@ -179,6 +188,18 @@ def should_use_openai_judge(judge_mode: str) -> bool:
 
 def judge_with_openai(question: str, answer: str, docs: list[dict[str, Any]], model: str) -> dict[str, Any]:
     from openai import OpenAI
+
+    if not str(answer or "").strip():
+        return {
+            "groundedness": 1,
+            "relevance": 1,
+            "coverage": 1,
+            "actionability": 1,
+            "hallucination_risk": 5,
+            "overall": 1,
+            "verdict": "FAIL",
+            "rationale": "Empty model answer; judge skipped.",
+        }
 
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY") or os.getenv("GPT_API_KEY"), timeout=90, max_retries=0)
     evidence = build_evidence_context(docs, evidence_k=3)
@@ -310,7 +331,7 @@ def main() -> None:
                 latency_ms = round((time.perf_counter() - start) * 1000, 2)
                 print(
                     f"[{run_index}/{total_runs}] done provider={label} mode={mode} "
-                    f"latency_ms={latency_ms} error={bool(error)}",
+                    f"latency_ms={latency_ms} answer_chars={len(answer)} error={bool(error)}",
                     flush=True,
                 )
 
