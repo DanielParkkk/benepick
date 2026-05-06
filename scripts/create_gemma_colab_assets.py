@@ -112,9 +112,47 @@ print('HF_TOKEN set:', bool(os.environ.get('HF_TOKEN')))
         ),
         cell(
             """# 4. Install and start Ollama
-import subprocess, time, requests, os, signal
+import shutil
+import subprocess
+import time
+import requests
+import os
 
-subprocess.run('curl -fsSL https://ollama.com/install.sh | sh', shell=True, check=True)
+def install_ollama_colab():
+    if shutil.which('ollama'):
+        print('ollama already installed:', shutil.which('ollama'))
+        return
+
+    # First try the official one-line installer. In some Colab runtimes this
+    # can fail while trying to configure service users, so we keep a fallback.
+    print('trying official install.sh...')
+    first = subprocess.run(
+        'curl -fsSL https://ollama.com/install.sh | sh',
+        shell=True,
+        text=True,
+        capture_output=True,
+    )
+    if first.returncode == 0 and shutil.which('ollama'):
+        print('official install complete')
+        return
+
+    print('official installer failed; using manual tar.zst install')
+    print('stdout tail:', first.stdout[-1000:])
+    print('stderr tail:', first.stderr[-1000:])
+
+    subprocess.run(['apt-get', '-qq', 'update'], check=True)
+    subprocess.run(['apt-get', '-qq', 'install', '-y', 'zstd'], check=True)
+    subprocess.run(
+        'curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | tar -x --zstd -C /usr',
+        shell=True,
+        check=True,
+    )
+
+    if not shutil.which('ollama'):
+        raise RuntimeError('Ollama install finished but ollama command was not found in PATH')
+
+install_ollama_colab()
+subprocess.run(['ollama', '-v'], check=False)
 
 OLLAMA_HOST = '127.0.0.1:11434'
 os.environ['OLLAMA_HOST'] = OLLAMA_HOST
