@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { loginWithGoogle, loginWithEmail, getFirebaseErrorMessage } from '@/lib/firebase';
+import { completeGoogleRedirectLogin, loginWithGoogle, loginWithEmail, getFirebaseErrorMessage } from '@/lib/firebase';
 import { loginWithKakao } from '@/lib/kakao';
 import { loginWithNaver } from '@/lib/naver';
 
@@ -17,6 +17,20 @@ export default function LoginPage() {
   const [error, setError] = useState('');
 
   const isReady = email.trim().length > 0 && pw.length > 0;
+
+  useEffect(() => {
+    let cancelled = false;
+    completeGoogleRedirectLogin()
+      .then((user) => {
+        if (!cancelled && user) router.replace('/');
+      })
+      .catch((err) => {
+        if (!cancelled && err?.code) setError(getFirebaseErrorMessage(err.code));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   const handleLogin = async () => {
     setError('');
@@ -36,8 +50,8 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      await loginWithGoogle();
-      router.push('/');
+      const user = await loginWithGoogle();
+      if (user) router.push('/');
     } catch (err) {
       if (err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') {
         setError(getFirebaseErrorMessage(err.code));

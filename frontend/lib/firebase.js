@@ -3,6 +3,8 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendEmailVerification,
@@ -51,8 +53,31 @@ const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export async function loginWithGoogle() {
-  const result = await signInWithPopup(requireAuth(), googleProvider);
-  const user = result.user;
+  const firebaseAuth = requireAuth();
+  let result;
+  try {
+    result = await signInWithPopup(firebaseAuth, googleProvider);
+  } catch (err) {
+    if (
+      err?.code === 'auth/popup-blocked' ||
+      err?.code === 'auth/operation-not-supported-in-this-environment'
+    ) {
+      await signInWithRedirect(firebaseAuth, googleProvider);
+      return null;
+    }
+    throw err;
+  }
+  return persistFirebaseUser(result.user, 'google');
+}
+
+export async function completeGoogleRedirectLogin() {
+  const firebaseAuth = requireAuth();
+  const result = await getRedirectResult(firebaseAuth);
+  if (!result?.user) return null;
+  return persistFirebaseUser(result.user, 'google');
+}
+
+async function persistFirebaseUser(user, provider = 'google') {
   const token = await user.getIdToken();
   saveAuthUser(token, {
     name:     user.displayName || '사용자',
@@ -60,7 +85,7 @@ export async function loginWithGoogle() {
     initial:  (user.displayName || '사용자')[0].toUpperCase(),
     uid:      user.uid,
     photo:    user.photoURL || null,
-    provider: 'google',
+    provider,
   });
   return user;
 }
@@ -192,6 +217,10 @@ export function getFirebaseErrorMessage(code) {
     'auth/popup-closed-by-user':    '로그인 창이 닫혔습니다.',
     'auth/cancelled-popup-request': '로그인이 취소되었습니다.',
     'auth/invalid-credential':      '이메일 또는 비밀번호가 올바르지 않습니다.',
+    'auth/popup-blocked':           '브라우저가 팝업을 차단했습니다. 다시 시도하면 리다이렉트 방식으로 로그인합니다.',
+    'auth/unauthorized-domain':     '현재 도메인이 Firebase 승인 도메인에 등록되어 있지 않습니다. Firebase Authentication > Settings > Authorized domains에 benepick.vercel.app을 추가해주세요.',
+    'auth/operation-not-allowed':   'Firebase Authentication에서 Google 로그인 제공업체가 비활성화되어 있습니다.',
   };
-  return messages[code] ?? '오류가 발생했습니다. 다시 시도해주세요.';
+  if (!code) return 'Firebase 환경변수가 누락되었습니다. Vercel에 NEXT_PUBLIC_FIREBASE_* 값을 추가한 뒤 재배포해주세요.';
+  return messages[code] ?? `로그인 오류가 발생했습니다. (${code})`;
 }
