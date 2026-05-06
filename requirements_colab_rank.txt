@@ -1,0 +1,8 @@
+pandas
+openpyxl
+numpy
+rank-bm25
+kiwipiepy
+sentence-transformers
+chromadb
+python-dotenv
