@@ -1,16 +1,22 @@
-// lib/kakao.js
+const KAKAO_JS_KEY =
+  process.env.NEXT_PUBLIC_KAKAO_JS_KEY || '8364c8aa16b940b51d4e5883c86fa0b8';
 
-const KAKAO_JS_KEY = '8364c8aa16b940b51d4e5883c86fa0b8';
-const REDIRECT_URI = 'http://localhost:3000/auth/kakao';
+function getKakaoRedirectUri() {
+  if (process.env.NEXT_PUBLIC_KAKAO_REDIRECT_URI) {
+    return process.env.NEXT_PUBLIC_KAKAO_REDIRECT_URI;
+  }
 
-// 팝업 없이 현재 탭에서 카카오 인가 페이지로 이동
+  return `${window.location.origin}/auth/kakao`;
+}
+
 export function loginWithKakao() {
+  const redirectUri = getKakaoRedirectUri();
   const kakaoAuthUrl =
     `https://kauth.kakao.com/oauth/authorize` +
     `?client_id=${KAKAO_JS_KEY}` +
-    `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
     `&response_type=code` +
-    `&prompt=login`; // 매번 카카오 로그인 화면 강제 표시
+    `&prompt=login`;
 
   window.location.href = kakaoAuthUrl;
 }
