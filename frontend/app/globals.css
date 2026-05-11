@@ -577,6 +577,7 @@ nav {
   display: flex;
   gap: 5px;
   margin-top: 6px;
+  flex-wrap: wrap;
 }
 
 .badge {
@@ -621,6 +622,7 @@ nav {
   display: flex;
   align-items: center;
   gap: 12px;
+  margin-bottom: 10px;
 }
 
 .progress-track {
@@ -657,21 +659,36 @@ nav {
   font-size: 12px;
   font-weight: 700;
   color: var(--gray-700);
-  white-space: nowrap;
+  white-space: normal;
+  word-break: keep-all;
+  line-height: 1.45;
   letter-spacing: -0.3px;
 }
 
+.policy-footer-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.policy-footer-row .benefit-chip {
+  flex: 1;
+  min-width: 0;
+}
+
 .policy-action {
-  position: absolute;
-  right: 22px;
-  bottom: 20px;
   font-size: 11px;
   color: var(--blue);
   font-weight: 600;
   display: flex;
+  justify-content: flex-end;
   align-items: center;
   gap: 3px;
-  opacity: 0;
+  opacity: 0.9;
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin-top: 1px;
   transition: opacity .2s;
 }
 
@@ -940,6 +957,12 @@ nav {
 
 .stat-item .val.blue { color: var(--blue); }
 .stat-item .val.green { color: var(--green); }
+.stat-item-benefit .val {
+  font-size: 14px;
+  line-height: 1.25;
+  letter-spacing: -0.2px;
+  word-break: keep-all;
+}
 .stat-item .lbl {
   font-size: 10px;
   color: var(--gray-500);

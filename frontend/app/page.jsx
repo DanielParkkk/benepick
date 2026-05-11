@@ -1,54 +1,83 @@
-'use client';
+﻿'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import NavBar from '../components/NavBar';
+import TabBar from '../components/TabBar';
+
+// ── 프로필 데이터 → 표시 텍스트 변환 헬퍼 ─────────────────────────
+const REGION_LABEL = {
+  seoul:'서울특별시', busan:'부산광역시', daegu:'대구광역시',
+  incheon:'인천광역시', gwangju:'광주광역시', daejeon:'대전광역시',
+  ulsan:'울산광역시', sejong:'세종특별자치시', gyeonggi:'경기도',
+  gangwon:'강원도', chungbuk:'충청북도', chungnam:'충청남도',
+  jeonbuk:'전라북도', jeonnam:'전라남도', gyeongbuk:'경상북도',
+  gyeongnam:'경상남도', jeju:'제주특별자치도',
+};
+const INCOME_SHORT = {
+  '50% 이하':'중위소득 50% 이하', '50~80%':'중위소득 50~80%',
+  '80~100%':'중위소득 80~100%', '100~150%':'중위소득 100~150%', '150% 초과':'중위소득 150% 초과',
+};
+function calcAge(birth) {
+  if (!birth || birth.length < 8) return null;
+  const y = parseInt(birth.slice(0,4)), m = parseInt(birth.slice(4,6))-1, d = parseInt(birth.slice(6,8));
+  const today = new Date();
+  let age = today.getFullYear() - y;
+  if (today.getMonth() < m || (today.getMonth() === m && today.getDate() < d)) age--;
+  return isNaN(age) ? null : age;
+}
 
 export default function DashboardPage() {
-  const [mounted, setMounted] = useState(false);
-  const [langDropdownOpen, setLangDropdownOpen] = useState(false);
-  const [currentLang, setCurrentLang] = useState('한국어');
-  const [activeLangCode, setActiveLangCode] = useState('ko');
   const [onboardingVisible, setOnboardingVisible] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [dashSearchResultsVisible, setDashSearchResultsVisible] = useState(false);
   const [selectedIntents, setSelectedIntents] = useState([]);
-  const [avatarDropdownOpen, setAvatarDropdownOpen] = useState(false);
-  const [user, setUser] = useState(null);
-  const langSelectorRef = useRef(null);
-  const avatarWrapRef = useRef(null);
+  const [profileTags, setProfileTags] = useState([]);
+  const [profileInitial, setProfileInitial] = useState('나');
+  const [profileUpdatedAt, setProfileUpdatedAt] = useState('');
+
+  // 프로필 동기화: localStorage → 태그 생성
+  const syncProfile = () => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('benefic_user') || '{}');
+      const p = stored.profile || {};
+      const name = stored.name || stored.displayName || '나';
+      setProfileInitial(name[0]?.toUpperCase() || '나');
+      const tags = [];
+      const age = calcAge(p.birth);
+      if (age !== null) tags.push('📅 만 ' + age + '세');
+      if (p.region) tags.push('📍 ' + (REGION_LABEL[p.region] || p.region));
+      if (p.income) tags.push('💰 ' + (INCOME_SHORT[p.income] || p.income));
+      if (p.household) tags.push('🏠 ' + p.household);
+      if (p.emp) tags.push('👔 ' + p.emp);
+      if (p.intents && p.intents.length) tags.push('💡 ' + p.intents.join('·'));
+      setProfileTags(tags);
+      const now = new Date();
+      const h = now.getHours(), mi = now.getMinutes();
+      const ampm = h < 12 ? '오전' : '오후';
+      const hh = h % 12 || 12;
+      const mm = String(mi).padStart(2, '0');
+      const regionText = p.region ? (REGION_LABEL[p.region] || p.region) : '지역 미설정';
+      setProfileUpdatedAt('마지막 업데이트: 오늘 ' + ampm + ' ' + hh + ':' + mm + ' · ' + regionText);
+    } catch(e) {}
+  };
+  useEffect(() => {
+    syncProfile();
+    window.addEventListener('benefic-profile-updated', syncProfile);
+    return () => window.removeEventListener('benefic-profile-updated', syncProfile);
+  }, []);
 
   useEffect(() => {
-    setMounted(true);
-
-    // 저장된 언어 로드
-    try {
-      const savedLang = localStorage.getItem('benefic_lang') || 'ko';
-      const LANG_DISPLAY = { ko:'한국어', en:'English', zh:'中文', ja:'日本語', vi:'Tiếng Việt' };
-      setActiveLangCode(savedLang);
-      setCurrentLang(LANG_DISPLAY[savedLang] || '한국어');
-    } catch(e) {}
-
-    // 진행바 애니메이션. 첫 페인트 타이밍에 width가 0으로 남는 경우를 막기 위해
-    // 목표 width를 data 속성에 보관하고 마지막에 한 번 더 복원한다.
+    // 진행바 애니메이션
     const bars = document.querySelectorAll('.progress-fill');
     bars.forEach((bar, i) => {
-      const finalW = bar.dataset.finalWidth || bar.style.width;
-      if (!finalW || finalW === '0' || finalW === '0%' || finalW === '0px') return;
-      bar.dataset.finalWidth = finalW;
-      bar.style.width = '0%';
+      const finalW = bar.style.width;
+      bar.style.width = '0';
       setTimeout(() => { bar.style.width = finalW; }, 300 + i * 120);
     });
-    setTimeout(() => {
-      bars.forEach(bar => {
-        const finalW = bar.dataset.finalWidth;
-        if (finalW && (!bar.style.width || bar.style.width === '0%' || bar.style.width === '0px')) {
-          bar.style.width = finalW;
-        }
-      });
-    }, 1800);
 
     // 온보딩 초기화
-    const ONBOARDING_KEY = 'benefic_seen_guide_v20260504';
+    const ONBOARDING_KEY = 'benefic_seen_guide_v20260424';
     try {
       const seen = localStorage.getItem(ONBOARDING_KEY);
       if (!seen) {
@@ -65,64 +94,32 @@ export default function DashboardPage() {
       window.insightInit();
     }
 
-    // 사용자 정보 로드
-    try {
-      const token = localStorage.getItem('token');
-      const userData = localStorage.getItem('benefic_user');
-      if (token && userData) setUser(JSON.parse(userData));
-      else if (token) setUser({ name: '사용자', initial: '나' });
-    } catch (e) {}
-
-    // 외부 클릭 시 드롭다운 닫기
-    const handleClick = (e) => {
-      if (langSelectorRef.current && !langSelectorRef.current.contains(e.target)) {
-        setLangDropdownOpen(false);
-      }
-      if (avatarWrapRef.current && !avatarWrapRef.current.contains(e.target)) {
-        setAvatarDropdownOpen(false);
-      }
+    // 이전 분석 결과 자동 복원 — main.js 로드 완료 후 실행
+    const tryRestorePortfolio = () => {
+      if (typeof window.renderDashboard !== 'function') return false;
+      try {
+        const cached = localStorage.getItem('benefic_portfolio');
+        if (!cached) return true;
+        const cards = JSON.parse(cached);
+        if (cards && cards.length > 0) {
+          window.renderDashboard({ recommendation_cards: cards });
+        }
+      } catch(e) {}
+      return true;
     };
-    document.addEventListener('click', handleClick);
-    return () => document.removeEventListener('click', handleClick);
+
+    if (!tryRestorePortfolio()) {
+      const interval = setInterval(() => {
+        if (tryRestorePortfolio()) clearInterval(interval);
+      }, 100);
+      setTimeout(() => clearInterval(interval), 5000);
+    }
   }, []);
-
-  // 언어 변경 시 번역 재적용 (React re-render 후 실행 보장)
-  useEffect(() => {
-    if (!mounted) return;
-    if (activeLangCode === 'ko') return;
-    const apply = () => {
-      if (typeof window !== 'undefined' && typeof window.applyTranslations === 'function') {
-        window.applyTranslations(activeLangCode);
-      }
-    };
-    // rAF 2번: React DOM 커밋 완전히 끝난 뒤 실행
-    requestAnimationFrame(() => requestAnimationFrame(apply));
-  }, [activeLangCode, mounted]);
 
   const closeOnboarding = () => setOnboardingVisible(false);
   const closeOnboardingForever = () => {
-    try { localStorage.setItem('benefic_seen_guide_v20260504', 'true'); } catch (e) {}
+    try { localStorage.setItem('benefic_seen_guide_v20260424', 'true'); } catch (e) {}
     setOnboardingVisible(false);
-  };
-
-  const toggleLangDropdown = (e) => {
-    e.stopPropagation();
-    setLangDropdownOpen(prev => !prev);
-  };
-
-  const selectLanguage = (langDisplay, langCode) => {
-    setCurrentLang(langDisplay);
-    setActiveLangCode(langCode);
-    setLangDropdownOpen(false);
-    if (typeof window !== 'undefined') {
-      if (typeof window.saveLang === 'function') window.saveLang(langCode);
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (typeof window.applyTranslations === 'function') window.applyTranslations(langCode);
-          window.dispatchEvent(new CustomEvent('benefic-lang-change', { detail: { lang: langCode } }));
-        });
-      });
-    }
   };
 
   const toggleIntent = (intent) => {
@@ -167,7 +164,7 @@ export default function DashboardPage() {
   return (
     <>
       {/* AI LOADING OVERLAY */}
-      <div className="ai-loading" id="aiLoading" style={aiLoading ? {display:'flex'} : {}}>
+      <div className="ai-loading" id="aiLoading" >
         <div className="ai-loading-card">
           <div className="ai-spinner"></div>
           <div className="ai-loading-text">
@@ -236,86 +233,7 @@ export default function DashboardPage() {
       </div>
 
       {/* NAV */}
-      <nav>
-        <Link href="/" className="nav-logo">
-          <div className="logo-mark">B</div>
-          <div className="logo-text">
-            <span className="logo-name" data-i18n="logo_name">베네픽</span>
-            <span className="logo-tag" data-i18n="logo_tag">나를 위한 맞춤 복지 추천</span>
-          </div>
-        </Link>
-        <div className="nav-center">
-          <Link href="/" className="active" data-i18n="nav_dashboard">대시보드</Link>
-          <Link href="/search" data-i18n="nav_search">정책 검색</Link>
-          <Link href="/analysis" data-i18n="nav_analysis">탈락 이유</Link>
-          <Link href="/portfolio" data-i18n="nav_portfolio">포트폴리오</Link>
-          <Link href="/apply" data-i18n="nav_apply">신청 보조</Link>
-          <Link href="/community" data-i18n="nav_community">커뮤니티</Link>
-        </div>
-        <div className="nav-right">
-          <div id="langSelector" className="lang-selector" ref={langSelectorRef}>
-            <button
-              id="langBtn"
-              className={`lang-btn${langDropdownOpen ? ' open' : ''}`}
-              onClick={toggleLangDropdown}
-              aria-haspopup="true"
-              aria-expanded={langDropdownOpen}
-            >
-              <svg className="globe-svg" width="15" height="15" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/>
-              </svg>
-              <span className="lang-label-text" id="currentLangLabel">{currentLang}</span>
-              <svg className="lang-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-            </button>
-            <div id="langDropdown" className={`lang-dropdown${langDropdownOpen ? ' visible' : ''}`}>
-              <div className="lang-dropdown-inner">
-                <div className={`lang-option${mounted && activeLangCode === 'ko' ? ' active' : ''}`} onClick={() => selectLanguage('한국어', 'ko')} data-lang-code="ko">
-                  <span className="lang-flag">🇰🇷</span><span>한국어</span>
-                  {mounted && activeLangCode === 'ko' && <svg className="lang-check" viewBox="0 0 13 13" fill="none"><path d="M2 6.5l3.5 3.5 5.5-6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                </div>
-                <div className={`lang-option${mounted && activeLangCode === 'en' ? ' active' : ''}`} onClick={() => selectLanguage('English', 'en')} data-lang-code="en"><span className="lang-flag">🇺🇸</span><span>English</span></div>
-                <div className="lang-divider"></div>
-                <div className={`lang-option${mounted && activeLangCode === 'ja' ? ' active' : ''}`} onClick={() => selectLanguage('日本語', 'ja')} data-lang-code="ja"><span className="lang-flag">🇯🇵</span><span>日本語</span></div>
-                <div className={`lang-option${mounted && activeLangCode === 'zh' ? ' active' : ''}`} onClick={() => selectLanguage('中文', 'zh')} data-lang-code="zh"><span className="lang-flag">🇨🇳</span><span>中文</span></div>
-                <div className={`lang-option${mounted && activeLangCode === 'vi' ? ' active' : ''}`} onClick={() => selectLanguage('Tiếng Việt', 'vi')} data-lang-code="vi"><span className="lang-flag">🇻🇳</span><span>Tiếng Việt</span></div>
-              </div>
-            </div>
-          </div>
-          {mounted && (
-            <div className="nav-avatar-wrap" ref={avatarWrapRef} onClick={(e) => { e.stopPropagation(); setLangDropdownOpen(false); setAvatarDropdownOpen(p => !p); }} style={{position:'relative',cursor:'pointer'}}>
-              {user ? (
-                <>
-                  <div className="nav-avatar" style={{cursor:'pointer'}}>
-                    <div className="avatar-circle">{user.initial || user.name?.[0] || '나'}</div>
-                    <span className="avatar-name">{user.name || '사용자'}님</span>
-                    <span>▾</span>
-                  </div>
-                  <div className={`avatar-dropdown${avatarDropdownOpen ? ' open' : ''}`} id="avatarDropdown">
-                    <div className="avatar-dropdown-inner">
-                      <div className="avatar-dd-header">
-                        <div className="avatar-dd-circle">{user.initial || user.name?.[0] || '나'}</div>
-                        <div>
-                          <div className="avatar-dd-name">{user.name || '사용자'}님</div>
-                          <div className="avatar-dd-email">{user.email || ''}</div>
-                        </div>
-                      </div>
-                      <div className="avatar-dd-divider"></div>
-                      <Link href="/scrap" className="avatar-dd-item" onClick={() => setAvatarDropdownOpen(false)}>스크랩</Link>
-                      <Link href="/portfolio" className="avatar-dd-item" onClick={() => setAvatarDropdownOpen(false)}>내 포트폴리오</Link>
-                      <Link href="/profile" className="avatar-dd-item" onClick={() => setAvatarDropdownOpen(false)}>개인정보 수정</Link>
-                      <Link href="/recently-viewed" className="avatar-dd-item" onClick={() => setAvatarDropdownOpen(false)}>최근 본 공고</Link>
-                      <div className="avatar-dd-divider"></div>
-                      <div className="avatar-dd-item logout" onClick={() => { localStorage.removeItem('token'); localStorage.removeItem('benefic_user'); window.location.href='/login'; }}>로그아웃</div>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <a href="/login" className="btn-login-nav">🔑 로그인</a>
-              )}
-            </div>
-          )}
-        </div>
-      </nav>
+      <NavBar activePage="dashboard" />
 
       <div className="container">
         <div className="screen active" id="screen-dashboard">
@@ -340,10 +258,10 @@ export default function DashboardPage() {
               <div className="profile-card">
                 <div className="profile-header">
                   <div className="profile-user">
-                    <div className="profile-avatar" id="profileAvatar">T</div>
+                    <div className="profile-avatar" id="profileAvatar">{profileInitial}</div>
                     <div className="profile-info">
                       <h2 id="profileName">나의 복지 분석</h2>
-                      <p data-i18n="profile_updated">마지막 업데이트: 오늘 오전 9:42 · 서울특별시 마포구</p>
+                      <p>{profileUpdatedAt || '마지막 업데이트: 오늘'}</p>
                     </div>
                   </div>
                   <div className="score-badge">
@@ -353,12 +271,15 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div className="profile-tags">
-                  <span className="profile-tag" data-i18n="tag_age">📅 만 27세</span>
-                  <span className="profile-tag" data-i18n="tag_region">📍 서울 마포구</span>
-                  <span className="profile-tag" data-i18n="tag_income">💰 중위소득 52%</span>
-                  <span className="profile-tag" data-i18n="tag_household">🏠 1인 가구</span>
-                  <span className="profile-tag" data-i18n="tag_job">👔 미취업</span>
-                  <span className="profile-tag" data-i18n="tag_edu">🎓 대졸</span>
+                  {profileTags.length > 0 ? (
+                    profileTags.map((tag, i) => (
+                      <span key={i} className="profile-tag">{tag}</span>
+                    ))
+                  ) : (
+                    <span style={{fontSize:'13px', color:'rgba(255,255,255,0.6)'}}>
+                      <a href="/profile" style={{color:'rgba(255,255,255,0.8)', textDecoration:'underline'}}>프로필</a>에서 개인정보를 입력하면 맞춤 정보가 표시됩니다.
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -501,170 +422,7 @@ export default function DashboardPage() {
                   </h3>
                 </div>
 
-                <div className="policy-list">
-
-                  {/* Policy 1 - 92% */}
-                  <div className="policy-card top" onClick={() => showDetail('청년-월세-한시-특별지원')}>
-                    <button className="scrap-btn" onClick={(e) => handleScrapToggle(e, '청년-월세-한시-특별지원')} title="스크랩 저장" aria-label="스크랩 저장">☆</button>
-                    <div className="policy-top-row">
-                      <div className="policy-left">
-                        <div className="policy-icon green">🏠</div>
-                        <div className="policy-meta">
-                          <h4 data-i18n="pc1_name">청년 월세 한시 특별지원</h4>
-                          <p data-i18n="pc1_desc">만 19~34세 · 월세 60만원 이하 · 독립 거주 청년</p>
-                          <div className="policy-badges">
-                            <span className="badge badge-green" data-i18n="badge_met">✅ 조건 충족</span>
-                            <span className="badge badge-blue">Gov24</span>
-                            <span className="badge badge-gray" data-i18n="pc1_max">월 최대 20만원</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="policy-percent">
-                        <div className="percent-num high">92<span style={{fontSize:'18px'}}>%</span></div>
-                        <div className="percent-label" data-i18n="prob_label">수급 확률</div>
-                      </div>
-                    </div>
-                    <div className="progress-row policy-progress-row">
-                      <div className="progress-track">
-                        <div className="progress-fill green" style={{width:'92%'}}></div>
-                      </div>
-                      <div className="benefit-chip" data-i18n="pc1_annual">연 240만원</div>
-                      <div className="policy-action" data-i18n="detail_btn">상세 분석 보기 →</div>
-                    </div>
-                  </div>
-
-                  {/* Policy 2 - 85% */}
-                  <div className="policy-card top" onClick={() => showDetail('국민내일배움카드')}>
-                    <button className="scrap-btn" onClick={(e) => handleScrapToggle(e, '국민내일배움카드')} title="스크랩 저장" aria-label="스크랩 저장">☆</button>
-                    <div className="policy-top-row">
-                      <div className="policy-left">
-                        <div className="policy-icon green">📚</div>
-                        <div className="policy-meta">
-                          <h4 data-i18n="pc2_name">국민내일배움카드</h4>
-                          <p data-i18n="pc2_desc">실업자 · 이직 예정자 · 단기근로자 지원 직업훈련</p>
-                          <div className="policy-badges">
-                            <span className="badge badge-green" data-i18n="badge_met">✅ 조건 충족</span>
-                            <span className="badge badge-blue" data-i18n="pc2_org">고용부</span>
-                            <span className="badge badge-gray" data-i18n="pc2_max">최대 500만원</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="policy-percent">
-                        <div className="percent-num high">85<span style={{fontSize:'18px'}}>%</span></div>
-                        <div className="percent-label" data-i18n="prob_label">수급 확률</div>
-                      </div>
-                    </div>
-                    <div className="progress-row policy-progress-row">
-                      <div className="progress-track">
-                        <div className="progress-fill green" style={{width:'85%'}}></div>
-                      </div>
-                      <div className="benefit-chip" data-i18n="pc2_benefit">최대 500만원</div>
-                      <div className="policy-action" data-i18n="detail_btn">상세 분석 보기 →</div>
-                    </div>
-                  </div>
-
-                  {/* INLINE AD */}
-                  <div className="inline-ad">
-                    <div className="inline-ad-icon">🏦</div>
-                    <div className="inline-ad-text">
-                      <span className="ad-badge">AD</span>
-                      <h5 data-i18n="ad1_name">카카오뱅크 청년 전세 대출</h5>
-                      <p data-i18n="ad1_desc">연 2.1%부터 · 최대 2억원 · 5분 비대면 신청</p>
-                    </div>
-                    <div className="inline-ad-arrow">›</div>
-                  </div>
-
-                  {/* Policy 3 - 78% */}
-                  <div className="policy-card mid" onClick={() => showDetail('청년-취업성공패키지')}>
-                    <button className="scrap-btn" onClick={(e) => handleScrapToggle(e, '청년-취업성공패키지')} title="스크랩 저장" aria-label="스크랩 저장">☆</button>
-                    <div className="policy-top-row">
-                      <div className="policy-left">
-                        <div className="policy-icon blue">💼</div>
-                        <div className="policy-meta">
-                          <h4 data-i18n="pc3_name">청년도약계좌</h4>
-                          <p data-i18n="pc3_desc">만 19~34세 · 개인소득 6,000만원 이하 · 5년 적립</p>
-                          <div className="policy-badges">
-                            <span className="badge badge-blue" data-i18n="badge_confirm">⚡ 확인 필요</span>
-                            <span className="badge badge-blue" data-i18n="pc3_org">금융위</span>
-                            <span className="badge badge-gray" data-i18n="pc3_max">최대 5,000만원</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="policy-percent">
-                        <div className="percent-num mid">78<span style={{fontSize:'18px'}}>%</span></div>
-                        <div className="percent-label" data-i18n="prob_label">수급 확률</div>
-                      </div>
-                    </div>
-                    <div className="progress-row policy-progress-row">
-                      <div className="progress-track">
-                        <div className="progress-fill blue" style={{width:'78%'}}></div>
-                      </div>
-                      <div className="benefit-chip" data-i18n="pc3_benefit">정부기여금 포함</div>
-                      <div className="policy-action" data-i18n="detail_btn">상세 분석 보기 →</div>
-                    </div>
-                  </div>
-
-                  {/* Policy 4 - 74% */}
-                  <div className="policy-card mid" onClick={() => showDetail('청년-마음건강-지원사업')}>
-                    <button className="scrap-btn" onClick={(e) => handleScrapToggle(e, '청년-마음건강-지원사업')} title="스크랩 저장" aria-label="스크랩 저장">☆</button>
-                    <div className="policy-top-row">
-                      <div className="policy-left">
-                        <div className="policy-icon blue">🏥</div>
-                        <div className="policy-meta">
-                          <h4 data-i18n="pc4_name">청년 마음건강 지원사업</h4>
-                          <p data-i18n="pc4_desc">만 19~34세 · 심리상담 바우처 · 연간 10회</p>
-                          <div className="policy-badges">
-                            <span className="badge badge-green" data-i18n="badge_met">✅ 조건 충족</span>
-                            <span className="badge badge-gray" data-i18n="pc4_org">복지부</span>
-                            <span className="badge badge-gray" data-i18n="pc4_max">10회 무료</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="policy-percent">
-                        <div className="percent-num mid">74<span style={{fontSize:'18px'}}>%</span></div>
-                        <div className="percent-label" data-i18n="prob_label">수급 확률</div>
-                      </div>
-                    </div>
-                    <div className="progress-row policy-progress-row">
-                      <div className="progress-track">
-                        <div className="progress-fill blue" style={{width:'74%'}}></div>
-                      </div>
-                      <div className="benefit-chip" data-i18n="pc4_benefit">연 80만원 상당</div>
-                      <div className="policy-action" data-i18n="detail_btn">상세 분석 보기 →</div>
-                    </div>
-                  </div>
-
-                  {/* Policy 5 - 41% */}
-                  <div className="policy-card low" onClick={() => showDetail('청년창업사관학교')}>
-                    <button className="scrap-btn" onClick={(e) => handleScrapToggle(e, '청년창업사관학교')} title="스크랩 저장" aria-label="스크랩 저장">☆</button>
-                    <div className="policy-top-row">
-                      <div className="policy-left">
-                        <div className="policy-icon orange">🚀</div>
-                        <div className="policy-meta">
-                          <h4 data-i18n="pc5_name">청년창업사관학교</h4>
-                          <p data-i18n="pc5_desc">만 39세 이하 · 창업 아이템 보유 · 사업계획서 필요</p>
-                          <div className="policy-badges">
-                            <span className="badge badge-orange" data-i18n="badge_lack">⚠️ 조건 부족</span>
-                            <span className="badge badge-gray" data-i18n="pc5_org">중기부</span>
-                            <span className="badge badge-gray" data-i18n="pc5_max">최대 1억원</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="policy-percent">
-                        <div className="percent-num low">41<span style={{fontSize:'18px'}}>%</span></div>
-                        <div className="percent-label" data-i18n="prob_label">수급 확률</div>
-                      </div>
-                    </div>
-                    <div className="progress-row policy-progress-row">
-                      <div className="progress-track">
-                        <div className="progress-fill orange" style={{width:'41%'}}></div>
-                      </div>
-                      <div className="benefit-chip" data-i18n="pc5_benefit">최대 1억원</div>
-                      <div className="policy-action" data-i18n="detail_btn">상세 분석 보기 →</div>
-                    </div>
-                  </div>
-
-                </div>
+                <div className="policy-list"></div>
 
                 {/* INLINE SEARCH RESULTS */}
                 <div id="dash-search-results-wrap">
@@ -700,8 +458,8 @@ export default function DashboardPage() {
                     <div className="val blue">87%</div>
                     <div className="lbl" data-i18n="stat_avg_prob">평균 확률</div>
                   </div>
-                  <div className="stat-item">
-                    <div className="val green">1,040<span style={{fontSize:'14px'}}>만</span></div>
+                  <div className="stat-item stat-item-benefit">
+                    <div className="val green">정책별 상이</div>
                     <div className="lbl" data-i18n="stat_benefit">예상 수혜액</div>
                   </div>
                   <div className="stat-item">
@@ -769,24 +527,7 @@ export default function DashboardPage() {
       </div>
 
       {/* BOTTOM TAB BAR */}
-      <nav className="tab-bar" role="navigation" aria-label="하단 메뉴">
-        <Link href="/" className="tab-item active" data-tab="home">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-          <span data-i18n="tab_home">홈</span>
-        </Link>
-        <Link href="/search" className="tab-item" data-tab="search">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <span data-i18n="tab_search">검색</span>
-        </Link>
-        <Link href="/community" className="tab-item" data-tab="community">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-          <span data-i18n="tab_community">커뮤니티</span>
-        </Link>
-        <Link href="/mypage" className="tab-item" data-tab="profile">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          <span data-i18n="tab_profile">프로필</span>
-        </Link>
-      </nav>
+      <TabBar active="home" />
     </>
   );
 }
