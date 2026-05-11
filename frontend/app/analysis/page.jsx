@@ -12,7 +12,6 @@ export default function AnalysisPage() {
   const langSelectorRef = useRef(null);
 
   useEffect(() => {
-    // main.js가 아직 로딩 전일 수 있으므로, 선택한 policy_id는 showDetail 호출 직전까지 보존한다.
     if (typeof window !== 'undefined') {
       let retryCount = 0;
       const restoreSelectedPolicy = () => {
@@ -104,9 +103,6 @@ export default function AnalysisPage() {
         <div className="nav-center">
           <Link href="/" data-i18n="nav_dashboard">대시보드</Link>
           <Link href="/search" data-i18n="nav_search">정책 검색</Link>
-          <Link href="/analysis" className="active" data-i18n="nav_analysis">탈락 이유</Link>
-          <Link href="/portfolio" data-i18n="nav_portfolio">포트폴리오</Link>
-          <Link href="/apply" data-i18n="nav_apply">신청 보조</Link>
           <Link href="/community" data-i18n="nav_community">커뮤니티</Link>
         </div>
         <div className="nav-right">

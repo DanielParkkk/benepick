@@ -18,69 +18,48 @@ function showTab(tab) {
   }
 }
 
-// ?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름
-// 甕곗쥓苑??API ?????곷섧??v2.1
-// ?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름
+// ══════════════════════════════════════════════════════════════
+// 베네픽 API 클라이언트 v2.1
+// ══════════════════════════════════════════════════════════════
 
-// ?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름
-// 甕곗쥓苑??v2.3 ??Claude AI 筌욊낯???怨뺣짗 (獄쏄퉮肉???븍뜇釉??
-// ?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름
+// ══════════════════════════════════════════════════════════════
+// 베네픽 v2.3 — Claude AI 직접 연동 (백엔드 불필요)
+// ══════════════════════════════════════════════════════════════
 
-// ?袁⑹삺 ?브쑴苑??紐꾨?
+// 현재 분석 세션
 let _currentQueryId = null;
 
-function _getCurrentLang() {
-  try {
-    const lang = localStorage.getItem('benefic_lang') || 'ko';
-    return ['ko', 'en', 'zh', 'ja', 'vi'].includes(lang) ? lang : 'ko';
-  } catch (e) {
-    return 'ko';
-  }
-}
-
-// _currentPortfolio: localStorage ?怨몃꺗??(??륁뵠筌왖 ??猷??袁⑸퓠???醫?)
+// _currentPortfolio: localStorage 영속화 (페이지 이동 후에도 유지)
 function _savePortfolio(data) {
   try { localStorage.setItem('benefic_portfolio', JSON.stringify(data)); } catch(e) {}
 }
 
-const DETAIL_CARD_KEY = 'benefic_detail_card';
-
-function _findPortfolioCard(policyId) {
-  const id = String(policyId || '');
-  if (!id) return null;
-  return (_currentPortfolio || []).find(card => {
-    const cardId = String(card?.policy_id || '');
-    const cardName = String(card?.??뺥돩??살구 || card?.policy_name || '');
-    return cardId === id || cardName === id;
-  }) || null;
-}
-
-function _cacheDetailCard(policyId, card) {
-  if (!card) return;
-  try {
-    localStorage.setItem(DETAIL_CARD_KEY, JSON.stringify({ policy_id: policyId, card }));
-  } catch(e) {}
-}
-
-function _loadDetailCard(policyId) {
-  try {
-    const saved = JSON.parse(localStorage.getItem(DETAIL_CARD_KEY) || 'null');
-    const card = saved?.card;
-    if (!card) return null;
-    const id = String(policyId || '');
-    const savedId = String(saved.policy_id || card.policy_id || '');
-    const cardName = String(card.??뺥돩??살구 || card.policy_name || '');
-    if (!id || savedId === id || cardName === id) return card;
-  } catch(e) {}
-  return null;
-}
-
-// ?닌됱쒔??slug 疫꿸퀡而?policy_id) 嚥≪뮇類??쎈꽅?귐? ?類ｂ봺 1??筌띾뜆?졿뉩紐껋쟿??곷?function _migrateLegacyDetailStorage() {
+// 구버전(slug 기반 policy_id) 로컬스토리지 정리 1회 마이그레이션
+function _migrateLegacyDetailStorage() {
   const MIGRATION_KEY = 'benefic_detail_migration_v2';
   try {
     if (localStorage.getItem(MIGRATION_KEY) === '1') return;
 
-    // ?⑥눊援?癒?뮉 ??ъ쁽揶쎛 ??용뮉 policy_id????????筌? ?袁⑹삺 獄쏄퉮肉??policy_id??    // ?얜챷???곸뵬 ????됱몵沃샕嚥?癰귣똻???뺣뼄. ?????롢늺 ?怨멸쉭 ?브쑴苑???륁뵠筌왖揶쎛 疫꿸퀡????묐탣嚥???λ선筌욊쑬??
+    const savedDetailId = localStorage.getItem('benefic_detail_id');
+    if (savedDetailId && !/\d/.test(savedDetailId)) {
+      localStorage.removeItem('benefic_detail_id');
+    }
+
+    const savedPortfolio = localStorage.getItem('benefic_portfolio');
+    if (savedPortfolio) {
+      const arr = JSON.parse(savedPortfolio);
+      if (Array.isArray(arr)) {
+        const hasLegacyId = arr.some(card => {
+          const id = String(card?.policy_id || '');
+          return id && !/\d/.test(id);
+        });
+        if (hasLegacyId) {
+          // 구버전 slug 기반 id가 섞인 캐시는 제거 후 재생성 유도
+          localStorage.removeItem('benefic_portfolio');
+        }
+      }
+    }
+
     localStorage.setItem(MIGRATION_KEY, '1');
   } catch (e) {
     // ignore
@@ -88,47 +67,21 @@ function _loadDetailCard(policyId) {
 }
 
 function _scoreToCSS(score) {
-  if (score >= 80) return { card_class:'top', percent_class:'high', progress_color:'green', badge_class:'badge-green', badge_label:'??鈺곌퀗援??겸뫗?? };
-  if (score >= 60) return { card_class:'mid', percent_class:'mid', progress_color:'blue', badge_class:'badge-blue', badge_label:'???類ㅼ뵥 ?袁⑹뒄' };
-  return { card_class:'low', percent_class:'low', progress_color:'orange', badge_class:'badge-orange', badge_label:'?醫묓닔 鈺곌퀗援??봔鈺? };
+  if (score >= 80) return { card_class:'top', percent_class:'high', progress_color:'green', badge_class:'badge-green', badge_label:'✅ 조건 충족' };
+  if (score >= 60) return { card_class:'mid', percent_class:'mid', progress_color:'blue', badge_class:'badge-blue', badge_label:'⚡ 확인 필요' };
+  return { card_class:'low', percent_class:'low', progress_color:'orange', badge_class:'badge-orange', badge_label:'⚠️ 조건 부족' };
 }
 
-function _buildDashboardSummary(cards = [], fallback = '?곕뗄荑??類ㅼ퐠???類ㅼ뵥??뤾쉭??') {
+function _buildDashboardSummary(cards = [], fallback = '추천 정책을 확인하세요.') {
   const names = cards
-    .map(card => card?.??뺥돩??살구 || card?.policy_name || '')
+    .map(card => card?.서비스명 || card?.policy_name || '')
     .map(name => String(name || '').trim())
     .filter(Boolean)
     .filter((name, index, arr) => arr.indexOf(name) === index)
     .slice(0, 3);
 
   if (!names.length) return fallback;
-  return `?온???類ㅼ퐠 ?袁⑤궖??${names.join(', ')} ?源놁뿯??덈뼄. ?怨멸쉭 ?遺용튋 ??밴쉐??筌왖?怨뺣┷???怨쀪퐨 ?곕뗄荑?野껉퀗?든몴??믪눘? 癰귣똻肉??뺚뵲??덈뼄.`;
-}
-
-function _extractBenefitAmount(label = '') {
-  const text = String(label || '').replace(/\s+/g, ' ').trim();
-  if (!text) return '';
-  const match = text.match(/(?:????筌ㅼ뮆?)?\s*\d[\d,]*(?:\.\d+)?\s*(?:??筌띾슣??筌??????뜚|筌ｌ뮇??/);
-  return match ? match[0].replace(/\s+/g, '') : '';
-}
-
-function _formatDashboardBenefitLabel(rawValue, cards = []) {
-  const direct = _extractBenefitAmount(rawValue);
-  if (direct) return direct;
-
-  const candidates = Array.isArray(cards) ? cards : [];
-  for (const card of candidates) {
-    const amount = _extractBenefitAmount(
-      card?.benefit_amount_label ||
-      card?.benefit_label ||
-      card?.benefit_summary ||
-      card?.筌왖?癒?땀??||
-      ''
-    );
-    if (amount) return amount;
-  }
-
-  return '?類ㅼ퐠癰??怨몄뵠';
+  return `관련 정책 후보는 ${names.join(', ')} 등입니다. 상세 요약 생성이 지연되어 우선 추천 결과를 먼저 보여드립니다.`;
 }
 
 function _loadPortfolio() {
@@ -136,82 +89,82 @@ function _loadPortfolio() {
     const s = localStorage.getItem('benefic_portfolio');
     if (!s) return [];
     const arr = JSON.parse(s);
-    // _css ?袁⑥뵭 ???????
+    // _css 누락 시 재계산
     return arr.map(card => {
-      if (!card._css) card._css = _scoreToCSS(card.??랁닋?類ｌぇ || card.eligibility_percent || 60);
+      if (!card._css) card._css = _scoreToCSS(card.수급확률 || card.eligibility_percent || 60);
       return card;
     });
   } catch(e) { return []; }
 }
 _migrateLegacyDetailStorage();
-let _currentPortfolio = _loadPortfolio();  // ?브쑴苑?野껉퀗??筌?Ŋ??(??륁뵠筌왖 揶??⑤벊?)
+let _currentPortfolio = _loadPortfolio();  // 분석 결과 캐시 (페이지 간 공유)
 
-// ???? ??볥럢 ?⑤벀?ц퉪?? ?類ㅼ퐠 ?怨쀬뵠?怨뺤퓢??곷뮞 (??곸삢) ????????????????????????????????????
+// ── 한국 공공복지 정책 데이터베이스 (내장) ──────────────────
 const POLICY_DB = [
-  { ??뺥돩??살구:'筌????遺욧쉭 ??뽯뻻 ?諛명롳쭪???, ??뺥돩??삵뀋??'雅뚯눊援?, 筌왖?癒????'?袁㏉닊', ???疫꿸퀗?筌?'???쀦뤃癒곕꽰?봔', 筌왖?癒???'筌?19~34???얜똻竊??筌??? ?봔筌뤴뫁? 癰귢쑬猷?椰꾧퀣竊? ?遺욧쉭 60筌띾슣????꾨릭', ?醫롮젟疫꿸퀣?:'餓λ쵐????굣 60% ??꾨릭, ?癒???餓λ쵐????굣 100% ??꾨릭', ?醫롪퍕獄쎻뫖苡?'癰귣벊?嚥??癒?뮉 雅뚯눖???녠숲', ?醫롪퍕疫꿸퀬釉?'?怨쀬㉦ ?怨몃뻻', ?袁れ넅?얜챷??'1600-0777', ?怨멸쉭鈺곌퀬?턷rl:'https://www.bokjiro.go.kr', 筌왖?癒?땀??'??筌ㅼ뮆? 20筌띾슣?? 筌ㅼ뮆? 12揶쏆뮇??筌왖?? },
-  { ??뺥돩??살구:'?????곸뵬獄쏄퀣?燁삳?諭?, ??뺥돩??삵뀋??'?⑥쥙??, 筌왖?癒????'??곸뒠亦?, ???疫꿸퀗?筌?'?⑥쥙??紐껊짗?봔', 筌왖?癒???'??쇰씜?? ??곸춦 ??됱젟?? ??쑴?숁뉩?뽰춦, ??ｋ┛域뱀눖以?? ?癒?겫??놁쁽', ?醫롮젟疫꿸퀣?:'??彛??餓???? ??뽰뇚, ?⑥쥙?????彛????뽰뇚', ?醫롪퍕獄쎻뫖苡?'?⑥쥙??4(work24.go.kr) ??ㅼ뵬???醫롪퍕', ?醫롪퍕疫꿸퀬釉?'?怨쀬㉦ ?怨몃뻻', ?袁れ넅?얜챷??'1350', ?怨멸쉭鈺곌퀬?턷rl:'https://www.work24.go.kr', 筌왖?癒?땀??'??덉졃??筌ㅼ뮆? 500筌띾슣?? ?癒???15~55%' },
-  { ??뺥돩??살구:'筌???袁⑸튋?④쑴伊?, ??뺥돩??삵뀋??'疫뀀뜆??, 筌왖?癒????'?袁㏉닊', ???疫꿸퀗?筌?'疫뀀뜆??袁⑹뜚??, 筌왖?癒???'筌?19~34?? 揶쏆뮇????굣 6,000筌띾슣????꾨릭, 揶쎛?닌딅꺖??餓λ쵐??180% ??꾨릭', ?醫롮젟疫꿸퀣?:'癰귣쵐肉???꾨뻬疫꿸퀗而?筌ㅼ뮆? 6????뽰뇚, 筌욊낯??3??疫뀀뜆????굣?ル굟鍮?⑥눘苑???뽰뇚', ?醫롪퍕獄쎻뫖苡?'???????癒?뮉 ?怨몃씜??, ?醫롪퍕疫꿸퀬釉?'?怨쀬㉦ ?醫롪퍕 揶쎛???遺얩?筌뤴뫁彛?', ?袁れ넅?얜챷??'1332', ?怨멸쉭鈺곌퀬?턷rl:'https://www.fsc.go.kr', 筌왖?癒?땀??'??筌ㅼ뮆? 70筌띾슣????뱀뿯 ???類?疫꿸퀣肉ф묾?筌ㅼ뮆? 6%, 5??筌띾슡由?筌ㅼ뮆? 5,000筌띾슣?? },
-  { ??뺥돩??살구:'筌???筌띾뜆?у쳞?우뺏 筌왖?癒?텢??, ??뺥돩??삵뀋??'癰귣떯援?, 筌왖?癒????'??곸뒠亦?, ???疫꿸퀗?筌?'癰귣떯援붻퉪???봔', 筌왖?癒???'筌?19~34??筌??? ???굣 疫꿸퀣? ??곸벉', ?醫롮젟疫꿸퀣?:'????怨룸뼖 ?袁⑹뒄 筌??? ?類ㅻ뻿椰꾨떯而?癰귣벊???녠숲 ???怨몄쁽 ?怨쀪퐨', ?醫롪퍕獄쎻뫖苡?'?類ㅻ뻿椰꾨떯而?퉪????녠숲 ?癒?뮉 筌왖?癒?퍥 ?얜챷??, ?醫롪퍕疫꿸퀬釉?'?怨쀬㉦ ?怨몃뻻(??됯텦 ???춭 ??筌띾뜃而?', ?袁れ넅?얜챷??'1577-0199', ?怨멸쉭鈺곌퀬?턷rl:'https://www.bokjiro.go.kr', 筌왖?癒?땀??'?袁ⓓ????怨룸뼖 ?怨뚯퍢 10????沅?筌왖?? 1???뼣 筌ㅼ뮆? 8筌띾슣?? },
-  { ??뺥돩??살구:'筌??덌㎕?뚮씜?????놃꺍', ??뺥돩??삵뀋??'筌≪럩毓?, 筌왖?癒????'?袁㏉닊', ???疫꿸퀗?筌?'餓λ쵐?쇠린?쇱퓗疫꿸퀣毓썽겫?', 筌왖?癒???'筌?39????꾨릭 ??덊돩筌≪럩毓???癒?뮉 筌≪럩毓?3????沅?, ?醫롮젟疫꿸퀣?:'筌≪럩毓??袁⑹뵠??癰귣똻?, ??毓썸④쑵?????뽱뀱, ??뺤첒夷뚳쭖?곸젔 ??沅????궢', ?醫롪퍕獄쎻뫖苡?'K-Startup ??딅읂??? ??ㅼ뵬???臾믩땾', ?醫롪퍕疫꿸퀬釉?'??1???⑤벀??癰귣똾??1~2??', ?袁れ넅?얜챷??'1357', ?怨멸쉭鈺곌퀬?턷rl:'https://www.k-startup.go.kr', 筌왖?癒?땀??'筌≪럩毓쏙쭪??癒?닊 筌ㅼ뮆? 1???뜚, ??龜?⑤벀而숈쮯筌롮꼹?쀯쭕???볥궗' },
-  { ??뺥돩??살구:'疫꿸퀣???븐넞癰귣똻????룻롦묾?깅연', ??뺥돩??삵뀋??'疫꿸퀣???븐넞', 筌왖?癒????'?袁㏉닊', ???疫꿸퀗?筌?'癰귣떯援붻퉪???봔', 筌왖?癒???'???굣?紐꾩젟??れ뵠 疫꿸퀣? 餓λ쵐????굣 30% ??꾨릭 揶쎛??, ?醫롮젟疫꿸퀣?:'?봔?臾믪벥?얜똻??疫꿸퀣? ?袁れ넅 ?怨몄뒠, ??沅쏆쮯???굣 ?ル굟鍮 ??沅?, ?醫롪퍕獄쎻뫖苡?'雅뚯눖???녠숲 獄쎻뫖揆 ?醫롪퍕, 癰귣벊?嚥???ㅼ뵬???醫롪퍕', ?醫롪퍕疫꿸퀬釉?'?怨쀬㉦ ?怨몃뻻', ?袁れ넅?얜챷??'129', ?怨멸쉭鈺곌퀬?턷rl:'https://www.bokjiro.go.kr', 筌왖?癒?땀??'1??揶쎛????筌ㅼ뮆? 713,102??2024??疫꿸퀣?)' },
-  { ??뺥돩??살구:'疫꿸퀣???븐넞癰귣똻??雅뚯눊援끾묾?깅연', ??뺥돩??삵뀋??'雅뚯눊援?, 筌왖?癒????'?袁㏉닊', ???疫꿸퀗?筌?'???쀦뤃癒곕꽰?봔', 筌왖?癒???'???굣?紐꾩젟??疫꿸퀣? 餓λ쵐????굣 48% ??꾨릭 揶쎛??, ?醫롮젟疫꿸퀣?:'?袁⑷컧揶쎛?? 疫꿸퀣??袁???????쇱젫 ?袁⑷컧??筌왖疫? ?癒?揶쎛?? ??뤾퐨??筌왖??, ?醫롪퍕獄쎻뫖苡?'雅뚯눖???녠숲 獄쎻뫖揆 ?癒?뮉 癰귣벊?嚥??醫롪퍕', ?醫롪퍕疫꿸퀬釉?'?怨쀬㉦ ?怨몃뻻', ?袁れ넅?얜챷??'1600-0777', ?怨멸쉭鈺곌퀬?턷rl:'https://www.myhome.go.kr', 筌왖?癒?땀??'??뽰뒻 1??揶쎛????筌ㅼ뮆? 341,000?? },
-  { ??뺥돩??살구:'??쇰씜疫뀀맩肉??닌딆춦疫뀀맩肉?', ??뺥돩??삵뀋??'?⑥쥙??, 筌왖?癒????'?袁㏉닊', ???疫꿸퀗?筌?'?⑥쥙??紐껊짗?봔', 筌왖?癒???'??곸춦 ??18揶쏆뮇??餓???곕궖????μ맄疫꿸퀗而?180????곴맒, ??쑴?꾥쳸?뽰읅 ??곸춦??, ?醫롮젟疫꿸퀣?:'?怨대젅???닌딆춦??뺣짗 ??롊? ???????뺣짗 ?紐꾩젟 疫꿸퀣? ?겸뫗??, ?醫롪퍕獄쎻뫖苡?'?⑥쥙??4 ??ㅼ뵬???醫롪퍕 ???⑥쥙???녠숲 獄쎻뫖揆', ?醫롪퍕疫꿸퀬釉?'??곸춦????쇱벉 ?醫???12揶쏆뮇????沅?, ?袁れ넅?얜챷??'1350', ?怨멸쉭鈺곌퀬?턷rl:'https://www.work24.go.kr', 筌왖?癒?땀??'??곸춦 ?????뇧?袁㏉닊 60%, 筌ㅼ뮇??1??63,104??筌ㅼ뮆? 66,000?? },
-  { ??뺥돩??살구:'?袁⑤짗??롫뼣', ??뺥돩??삵뀋??'揶쎛鈺?, 筌왖?癒????'?袁㏉닊', ???疫꿸퀗?筌?'癰귣떯援붻퉪???봔', 筌왖?癒???'筌?8??沃섎챶彛?0~95揶쏆뮇?? ?袁⑤짗', ?醫롮젟疫꿸퀣?:'???굣夷??沅?疫꿸퀣? ??곸뵠 ?怨뺤죯 鈺곌퀗援뷂쭕??겸뫗???롢늺 筌왖疫?, ?醫롪퍕獄쎻뫖苡?'癰귣벊?嚥? ?類?24, 雅뚯눖???녠숲', ?醫롪퍕疫꿸퀬釉?'?곗뮇源??곗쨮?봔??60????沅??醫롪퍕 ?????닋 筌왖疫?, ?袁れ넅?얜챷??'129', ?怨멸쉭鈺곌퀬?턷rl:'https://www.bokjiro.go.kr', 筌왖?癒?땀??'??10筌띾슣??筌왖疫? },
-  { ??뺥돩??살구:'???筌뤴몿?鈺??袁⑤짗?臾믪몓??, ??뺥돩??삵뀋??'揶쎛鈺?, 筌왖?癒????'?袁㏉닊', ???疫꿸퀗?筌?'??苑?첎?鈺곌퉭?', 筌왖?癒???'???굣 疫꿸퀣? 餓λ쵐????굣 63% ??꾨릭 ???筌뤴몿?鈺? 筌?18??沃섎챶彛??癒?', ?醫롮젟疫꿸퀣?:'???筌?揶쎛???紐꾩젟, ???굣夷??沅???沅?, ?醫롪퍕獄쎻뫖苡?'雅뚯눖???녠숲 獄쎻뫖揆 ?醫롪퍕', ?醫롪퍕疫꿸퀬釉?'?怨쀬㉦ ?怨몃뻻', ?袁れ넅?얜챷??'1577-2514', ?怨멸쉭鈺곌퀬?턷rl:'https://www.bokjiro.go.kr', 筌왖?癒?땀??'?袁⑤짗 1?紐껊뼣 ??21筌띾슣??2024??疫꿸퀣?)' },
-  { ??뺥돩??살구:'?紐꾩뵥 疫꿸퀣??怨뚰닊', ??뺥돩??삵뀋??'?紐꾩뵥', 筌왖?癒????'?袁㏉닊', ???疫꿸퀗?筌?'癰귣떯援붻퉪???봔', 筌왖?癒???'筌?65????곴맒, ???굣??륁맄 70% ??꾨릭 ?????, ?醫롮젟疫꿸퀣?:'??ㅻ즴揶쎛???????굣?紐꾩젟??202筌띾슣????꾨릭(2024??', ?醫롪퍕獄쎻뫖苡?'雅뚯눖???녠숲, ????怨뚰닊?⑤벉?? 癰귣벊?嚥?, ?醫롪퍕疫꿸퀬釉?'筌?65????뱀뵬 1揶쏆뮇???袁????醫롪퍕 揶쎛??, ?袁れ넅?얜챷??'1355', ?怨멸쉭鈺곌퀬?턷rl:'https://www.bokjiro.go.kr', 筌왖?癒?땀??'??ㅻ즴揶쎛??筌ㅼ뮆? ??334,810??2024??' },
-  { ??뺥돩??살구:'?關釉????뺣짗筌왖?癒?퐣??쑴??, ??뺥돩??삵뀋??'?關釉??, 筌왖?癒????'??뺥돩??, ???疫꿸퀗?筌?'癰귣떯援붻퉪???봔', 筌왖?癒???'筌?6??筌?65??沃섎챶彛??關釉?? ?關釉?源껎닋 1~3疫?, ?醫롮젟疫꿸퀣?:'??뺣짗筌왖???紐꾩젟鈺곌퀣沅??癒?땾 42????곴맒', ?醫롪퍕獄쎻뫖苡?'雅뚯눖???녠숲 獄쎻뫖揆 ?醫롪퍕', ?醫롪퍕疫꿸퀬釉?'?怨쀬㉦ ?怨몃뻻', ?袁れ넅?얜챷??'129', ?怨멸쉭鈺곌퀬?턷rl:'https://www.bokjiro.go.kr', 筌왖?癒?땀??'??뺣짗筌왖?癒?닋????筌ㅼ뮆? 1,869筌ｌ뮇???닌덉퍢癰?筌△뫀踰?' },
-  { ??뺥돩??살구:'筌????곸뵬???곕벚?롩넫?, ??뺥돩??삵뀋??'疫뀀뜆??, 筌왖?癒????'?袁㏉닊', ???疫꿸퀗?筌?'癰귣떯援붻퉪???봔', 筌왖?癒???'筌?19~34????랁닋?癒껊９媛?怨몄맄 筌??? ???굣 疫꿸퀣? 餓λ쵐????굣 100% ??꾨릭 域뱀눖以덉쮯??毓???굣??, ?醫롮젟疫꿸퀣?:'疫꿸퀣? 餓λ쵐????굣 50% ??꾨릭 揶쎛???怨쀪퐨, 域뱀눖以덉쮯??毓???굣 ??10筌띾슣????곴맒', ?醫롪퍕獄쎻뫖苡?'癰귣벊?嚥???ㅼ뵬???癒?뮉 雅뚯눖???녠숲', ?醫롪퍕疫꿸퀬釉?'??1???⑤벀??癰귣똾??5~6??', ?袁れ넅?얜챷??'129', ?怨멸쉭鈺곌퀬?턷rl:'https://www.bokjiro.go.kr', 筌왖?癒?땀??'癰귣챷???怨룐뵲 ??10筌띾슣?????類? 筌왖?癒?닊 ??10~30筌띾슣??筌띲끉臾? 3??筌띾슡由? },
-  { ??뺥돩??살구:'????館釉경묾???볥럢?館釉????', ??뺥돩??삵뀋??'?대Ŋ??, 筌왖?癒????'?袁㏉닊', ???疫꿸퀗?筌?'?대Ŋ?곲겫?', 筌왖?癒???'??沅???????釉?? ???굣 疫꿸퀣? ?겸뫗???, ?醫롮젟疫꿸퀣?:'???굣?브쑴??1~8?닌덉퍢, ?源놁읅 疫꿸퀣?(C??덉젎 ??곴맒), ??沅???????釉?, ?醫롪퍕獄쎻뫖苡?'??볥럢?館釉??????딅읂???(www.kosaf.go.kr)', ?醫롪퍕疫꿸퀬釉?'??녿┛癰??醫롪퍕(2??8??', ?袁れ넅?얜챷??'1599-2000', ?怨멸쉭鈺곌퀬?턷rl:'https://www.kosaf.go.kr', 筌왖?癒?땀??'???굣 1~3?닌덉퍢 ?袁⑸만, 4?닌덉퍢 390筌띾슣?? 8?닌덉퍢 67.5筌띾슣????녿┛??' },
-  { ??뺥돩??살구:'?癒곗넞域뱀눖以??毓?, ??뺥돩??삵뀋??'?⑥쥙??, 筌왖?癒????'??뺥돩??, ???疫꿸퀗?筌?'癰귣떯援붻퉪???봔', 筌왖?癒???'疫꿸퀣???븐넞??랁닋??獄?筌△뫁湲?袁㏉롳㎘?餓?域뱀눖以?貫???, ?醫롮젟疫꿸퀣?:'?癒곗넞??녠숲 ?怨룸뼖 ???癒곗넞 筌〓챷肉???뤾텢 ??덈뮉 ??, ?醫롪퍕獄쎻뫖苡?'筌왖?????뽮쉽???癒?뮉 雅뚯눖???녠숲', ?醫롪퍕疫꿸퀬釉?'?怨쀬㉦ ?怨몃뻻', ?袁れ넅?얜챷??'129', ?怨멸쉭鈺곌퀬?턷rl:'https://www.bokjiro.go.kr', 筌왖?癒?땀??'域뱀눖以??醫륁굨癰?疫뀀맩肉???뽰삢?? 筌ㅼ뮇??袁㏉닊 100%, 域뱀눖以?醫??? 筌ㅼ뮇??袁㏉닊 80%)' },
-  { ??뺥돩??살구:'疫뀀떯?믦퉪??筌왖??, ??뺥돩??삵뀋??'疫꿸퀣???븐넞', 筌왖?癒????'?袁㏉닊', ???疫꿸퀗?筌?'癰귣떯援붻퉪???봔', 筌왖?癒???'?袁㏓┛?怨뱀넺 獄쏆뮇源??곗쨮 ??룻?醫? ?ⓦ끇???揶쎛??, ?醫롮젟疫꿸퀣?:'揶쏅쵐???살쑎????쇱춦夷뚳쭪?덊앹쮯???????袁㏓┛???, ???굣夷??沅?疫꿸퀣?', ?醫롪퍕獄쎻뫖苡?'雅뚯눖???녠숲 ?癒?뮉 癰귣벊??봔 ?怨룸뼖 ?袁れ넅', ?醫롪퍕疫꿸퀬釉?'?袁㏓┛??? 獄쏆뮇源?筌앸맩??, ?袁れ넅?얜챷??'129', ?怨멸쉭鈺곌퀬?턷rl:'https://www.bokjiro.go.kr', 筌왖?癒?땀??'??룻롳쭪???1??揶쎛????683,400?? ??롮┷夷뚥틠?④탢夷뚧뤃癒?몓筌왖?????怨뚰? },
-  { ??뺥돩??살구:'??뿅?遺?鈺?獄쎻뫖揆?대Ŋ???뺥돩??, ??뺥돩??삵뀋??'揶쎛鈺?, 筌왖?癒????'??뺥돩??, ???疫꿸퀗?筌?'??苑?첎?鈺곌퉭?', 筌왖?癒???'野껉퀬??????獄?域뮤?遺우쁽嚥??닌딄쉐????뿅?遺?鈺?, ?醫롮젟疫꿸퀣?:'??껊럢 5????꾨릭 ?怨쀪퐨 筌왖?? ??볥럢???대Ŋ??沃섎챷???륁쁽', ?醫롪퍕獄쎻뫖苡?'??뿅?遺?鈺곌퉮??癒?쉽???醫롪퍕', ?醫롪퍕疫꿸퀬釉?'?怨쀬㉦ ?怨몃뻻', ?袁れ넅?얜챷??'1577-1366', ?怨멸쉭鈺곌퀬?턷rl:'https://www.mogef.go.kr', 筌왖?癒?땀??'??볥럢??욱꺍??ㅻ８?筌뤴몿???ㅻ９?????븐넞筌왖????揶쎛?類ｊ컩???대Ŋ????뺥돩????볥궗' },
-  { ??뺥돩??살구:'?紐꾩뵥 ??깆쁽??獄??????뺣짗 筌왖?癒?텢??, ??뺥돩??삵뀋??'?紐꾩뵥', 筌왖?癒????'?袁㏉닊', ???疫꿸퀗?筌?'癰귣떯援붻퉪???봔', 筌왖?癒???'筌?65????곴맒(??? ??毓?60????곴맒), 疫꿸퀣??怨뚰닊 ??랁닋???怨쀪퐨', ?醫롮젟疫꿸퀣?:'?⑤벊??鍮㏓９沅???퐣??쑴??鍮㏓９??館?????醫륁굨癰?癰귢쑬猷?疫꿸퀣?', ?醫롪퍕獄쎻뫖苡?'雅뚯눖???녠숲, ?紐꾩뵥癰귣벊??온, ??뺣빍??꾧깻??, ?醫롪퍕疫꿸퀬釉?'?怨쀭겧 ?⑤벀??1~2??雅뚯눖以??臾믩땾)', ?袁れ넅?얜챷??'1577-1389', ?怨멸쉭鈺곌퀬?턷rl:'https://www.bokjiro.go.kr', 筌왖?癒?땀??'?⑤벊?????27筌띾슣?? ?????뺥돩??쎌굨 ??78.2筌띾슣??2024??疫꿸퀣?)' },
-  { ??뺥돩??살구:'筌????띯뫁毓?源껊궗???텕筌왖', ??뺥돩??삵뀋??'?⑥쥙??, 筌왖?癒????'??뺥돩??, ???疫꿸퀗?筌?'?⑥쥙??紐껊짗?봔', 筌왖?癒???'筌?18~34??沃섎챷???筌????醫롮??? 餓λ쵐????굣 60% ??꾨릭, ??れ??? ???굣 ?얜떯?)', ?醫롮젟疫꿸퀣?:'?⑥쥙???녠숲 ?怨룸뼖 ??筌〓챷肉?野껉퀣?? ?띯뫁毓???? ?類ㅼ뵥', ?醫롪퍕獄쎻뫖苡?'?⑥쥙??4(work24.go.kr) ?癒?뮉 ?⑥쥙???녠숲 獄쎻뫖揆', ?醫롪퍕疫꿸퀬釉?'?怨쀬㉦ ?怨몃뻻', ?袁れ넅?얜챷??'1350', ?怨멸쉭鈺곌퀬?턷rl:'https://www.work24.go.kr', 筌왖?癒?땀??'筌욊쑬?믪쮯野껋럥???블???롫뼣 25筌띾슣?? ??덉졃??롫뼣 ??筌ㅼ뮆? 28.4筌띾슣?? ?띯뫁毓??貫??묾?筌ㅼ뮆? 150筌띾슣?? },
-  { ??뺥돩??살구:'?癒?섐筌왖獄쏅뗄??㎗?, ??뺥돩??삵뀋??'疫꿸퀣???븐넞', 筌왖?癒????'??곸뒠亦?, ???疫꿸퀗?筌?'?怨쀫씜???맒?癒?뜚?봔', 筌왖?癒???'疫꿸퀣???븐넞??랁닋??餓??紐꾩뵥夷?怨몄??苑룸９??醫롮뵥夷?袁⑷텦?봔夷뚥빳臾믪쵄筌욌뜇?????釉?揶쎛??, ?醫롮젟疫꿸퀣?:'?癒?섐筌왖 ?띯뫁鍮잍④쑴留??遺쎄탷 ?겸뫗?? ???굣 疫꿸퀣? ?겸뫗??, ?醫롪퍕獄쎻뫖苡?'雅뚯눖???녠숲 獄쎻뫖揆 ?醫롪퍕', ?醫롪퍕疫꿸퀬釉?'筌띲끇??5~6???醫롪퍕', ?袁れ넅?얜챷??'1600-3190', ?怨멸쉭鈺곌퀬?턷rl:'https://www.energyv.or.kr', 筌왖?癒?땀??'1??揶쎛???怨뚯퍢 筌ㅼ뮆? 95,000?? 揶쎛?닌딆뜚??獄??④쑴????怨뺤뵬 筌△뫀踰? },
+  { 서비스명:'청년 월세 한시 특별지원', 서비스분야:'주거', 지원유형:'현금', 소관기관명:'국토교통부', 지원대상:'만 19~34세 무주택 청년, 부모와 별도 거주, 월세 60만원 이하', 선정기준:'중위소득 60% 이하, 원가구 중위소득 100% 이하', 신청방법:'복지로 또는 주민센터', 신청기한:'연중 상시', 전화문의:'1600-0777', 상세조회url:'https://www.bokjiro.go.kr', 지원내용:'월 최대 20만원, 최대 12개월 지원' },
+  { 서비스명:'국민내일배움카드', 서비스분야:'고용', 지원유형:'이용권', 소관기관명:'고용노동부', 지원대상:'실업자, 이직 예정자, 비정규직, 단기근로자, 자영업자', 선정기준:'재직자 중 일부 제외, 고소득 재직자 제외', 신청방법:'고용24(work24.go.kr) 온라인 신청', 신청기한:'연중 상시', 전화문의:'1350', 상세조회url:'https://www.work24.go.kr', 지원내용:'훈련비 최대 500만원, 자부담 15~55%' },
+  { 서비스명:'청년도약계좌', 서비스분야:'금융', 지원유형:'현금', 소관기관명:'금융위원회', 지원대상:'만 19~34세, 개인소득 6,000만원 이하, 가구소득 중위 180% 이하', 선정기준:'병역 이행기간 최대 6년 제외, 직전 3년 금융소득종합과세 제외', 신청방법:'은행 앱 또는 영업점', 신청기한:'연중 신청 가능(월별 모집)', 전화문의:'1332', 상세조회url:'https://www.fsc.go.kr', 지원내용:'월 최대 70만원 납입 시 정부기여금 최대 6%, 5년 만기 최대 5,000만원' },
+  { 서비스명:'청년 마음건강 지원사업', 서비스분야:'보건', 지원유형:'이용권', 소관기관명:'보건복지부', 지원대상:'만 19~34세 청년, 소득 기준 없음', 선정기준:'심리상담 필요 청년, 정신건강 복지센터 대상자 우선', 신청방법:'정신건강복지센터 또는 지자체 문의', 신청기한:'연중 상시(예산 소진 시 마감)', 전화문의:'1577-0199', 상세조회url:'https://www.bokjiro.go.kr', 지원내용:'전문심리상담 연간 10회 이내 지원, 1회당 최대 8만원' },
+  { 서비스명:'청년창업사관학교', 서비스분야:'창업', 지원유형:'현금', 소관기관명:'중소벤처기업부', 지원대상:'만 39세 이하 예비창업자 또는 창업 3년 이내', 선정기준:'창업 아이템 보유, 사업계획서 제출, 서류·면접 심사 통과', 신청방법:'K-Startup 홈페이지 온라인 접수', 신청기한:'연 1회 공고(보통 1~2월)', 전화문의:'1357', 상세조회url:'https://www.k-startup.go.kr', 지원내용:'창업지원금 최대 1억원, 사무공간·멘토링 제공' },
+  { 서비스명:'기초생활보장 생계급여', 서비스분야:'기초생활', 지원유형:'현금', 소관기관명:'보건복지부', 지원대상:'소득인정액이 기준 중위소득 30% 이하 가구', 선정기준:'부양의무자 기준 완화 적용, 재산·소득 종합 심사', 신청방법:'주민센터 방문 신청, 복지로 온라인 신청', 신청기한:'연중 상시', 전화문의:'129', 상세조회url:'https://www.bokjiro.go.kr', 지원내용:'1인 가구 월 최대 713,102원(2024년 기준)' },
+  { 서비스명:'기초생활보장 주거급여', 서비스분야:'주거', 지원유형:'현금', 소관기관명:'국토교통부', 지원대상:'소득인정액 기준 중위소득 48% 이하 가구', 선정기준:'임차가구: 기준임대료 내 실제 임차료 지급, 자가가구: 수선비 지원', 신청방법:'주민센터 방문 또는 복지로 신청', 신청기한:'연중 상시', 전화문의:'1600-0777', 상세조회url:'https://www.myhome.go.kr', 지원내용:'서울 1인 가구 월 최대 341,000원' },
+  { 서비스명:'실업급여(구직급여)', 서비스분야:'고용', 지원유형:'현금', 소관기관명:'고용노동부', 지원대상:'이직 전 18개월 중 피보험 단위기간 180일 이상, 비자발적 이직자', 선정기준:'적극적 구직활동 의무, 재취업 활동 인정 기준 충족', 신청방법:'고용24 온라인 신청 후 고용센터 방문', 신청기한:'이직일 다음 날부터 12개월 이내', 전화문의:'1350', 상세조회url:'https://www.work24.go.kr', 지원내용:'퇴직 전 평균임금 60%, 최소 1일 63,104원~최대 66,000원' },
+  { 서비스명:'아동수당', 서비스분야:'가족', 지원유형:'현금', 소관기관명:'보건복지부', 지원대상:'만 8세 미만(0~95개월) 아동', 선정기준:'소득·재산 기준 없이 연령 조건만 충족하면 지급', 신청방법:'복지로, 정부24, 주민센터', 신청기한:'출생일로부터 60일 이내 신청 시 소급 지급', 전화문의:'129', 상세조회url:'https://www.bokjiro.go.kr', 지원내용:'월 10만원 지급' },
+  { 서비스명:'한부모가족 아동양육비', 서비스분야:'가족', 지원유형:'현금', 소관기관명:'여성가족부', 지원대상:'소득 기준 중위소득 63% 이하 한부모가족, 만 18세 미만 자녀', 선정기준:'한부모 가구 인정, 소득·재산 심사', 신청방법:'주민센터 방문 신청', 신청기한:'연중 상시', 전화문의:'1577-2514', 상세조회url:'https://www.bokjiro.go.kr', 지원내용:'아동 1인당 월 21만원(2024년 기준)' },
+  { 서비스명:'노인 기초연금', 서비스분야:'노인', 지원유형:'현금', 소관기관명:'보건복지부', 지원대상:'만 65세 이상, 소득하위 70% 이하 어르신', 선정기준:'단독가구 월 소득인정액 202만원 이하(2024년)', 신청방법:'주민센터, 국민연금공단, 복지로', 신청기한:'만 65세 생일 1개월 전부터 신청 가능', 전화문의:'1355', 상세조회url:'https://www.bokjiro.go.kr', 지원내용:'단독가구 최대 월 334,810원(2024년)' },
+  { 서비스명:'장애인 활동지원서비스', 서비스분야:'장애인', 지원유형:'서비스', 소관기관명:'보건복지부', 지원대상:'만 6세~만 65세 미만 장애인, 장애등급 1~3급', 선정기준:'활동지원 인정조사 점수 42점 이상', 신청방법:'주민센터 방문 신청', 신청기한:'연중 상시', 전화문의:'129', 상세조회url:'https://www.bokjiro.go.kr', 지원내용:'활동지원급여 월 최대 1,869천원(구간별 차등)' },
+  { 서비스명:'청년내일저축계좌', 서비스분야:'금융', 지원유형:'현금', 소관기관명:'보건복지부', 지원대상:'만 19~34세 수급자·차상위 청년, 소득 기준 중위소득 100% 이하 근로·사업소득자', 선정기준:'기준 중위소득 50% 이하 가구 우선, 근로·사업소득 월 10만원 이상', 신청방법:'복지로 온라인 또는 주민센터', 신청기한:'연 1회 공고(보통 5~6월)', 전화문의:'129', 상세조회url:'https://www.bokjiro.go.kr', 지원내용:'본인 적립 월 10만원 시 정부 지원금 월 10~30만원 매칭, 3년 만기' },
+  { 서비스명:'국가장학금(한국장학재단)', 서비스분야:'교육', 지원유형:'현금', 소관기관명:'교육부', 지원대상:'국내 대학 재학생, 소득 기준 충족자', 선정기준:'소득분위 1~8구간, 성적 기준(C학점 이상), 국내 대학 재학', 신청방법:'한국장학재단 홈페이지(www.kosaf.go.kr)', 신청기한:'학기별 신청(2월/8월)', 전화문의:'1599-2000', 상세조회url:'https://www.kosaf.go.kr', 지원내용:'소득 1~3구간 전액, 4구간 390만원, 8구간 67.5만원(학기당)' },
+  { 서비스명:'자활근로사업', 서비스분야:'고용', 지원유형:'서비스', 소관기관명:'보건복지부', 지원대상:'기초생활수급자 및 차상위계층 중 근로능력자', 선정기준:'자활센터 상담 후 자활 참여 의사 있는 자', 신청방법:'지역자활센터 또는 주민센터', 신청기한:'연중 상시', 전화문의:'129', 상세조회url:'https://www.bokjiro.go.kr', 지원내용:'근로 유형별 급여(시장형: 최저임금 100%, 근로유지형: 최저임금 80%)' },
+  { 서비스명:'긴급복지지원', 서비스분야:'기초생활', 지원유형:'현금', 소관기관명:'보건복지부', 지원대상:'위기상황 발생으로 생계유지 곤란한 가구', 선정기준:'갑작스러운 실직·질병·사고 등 위기사유, 소득·재산 기준', 신청방법:'주민센터 또는 복지부 상담 전화', 신청기한:'위기사유 발생 즉시', 전화문의:'129', 상세조회url:'https://www.bokjiro.go.kr', 지원내용:'생계지원 1인 가구 월 683,400원, 의료·주거·교육지원 등 연계' },
+  { 서비스명:'다문화가족 방문교육서비스', 서비스분야:'가족', 지원유형:'서비스', 소관기관명:'여성가족부', 지원대상:'결혼이민자 및 귀화자로 구성된 다문화가족', 선정기준:'입국 5년 이하 우선 지원, 한국어 교육 미이수자', 신청방법:'다문화가족지원센터 신청', 신청기한:'연중 상시', 전화문의:'1577-1366', 상세조회url:'https://www.mogef.go.kr', 지원내용:'한국어교육·부모교육·자녀생활지원 등 가정방문 교육 서비스 제공' },
+  { 서비스명:'노인 일자리 및 사회활동 지원사업', 서비스분야:'노인', 지원유형:'현금', 소관기관명:'보건복지부', 지원대상:'만 65세 이상(일부 사업 60세 이상), 기초연금 수급자 우선', 선정기준:'공익형·사회서비스형·시장형 등 유형별 별도 기준', 신청방법:'주민센터, 노인복지관, 시니어클럽', 신청기한:'연초 공고(1~2월 주로 접수)', 전화문의:'1577-1389', 상세조회url:'https://www.bokjiro.go.kr', 지원내용:'공익형 월 27만원, 사회서비스형 월 78.2만원(2024년 기준)' },
+  { 서비스명:'청년 취업성공패키지', 서비스분야:'고용', 지원유형:'서비스', 소관기관명:'고용노동부', 지원대상:'만 18~34세 미취업 청년(Ⅰ유형: 중위소득 60% 이하, Ⅱ유형: 소득 무관)', 선정기준:'고용센터 상담 후 참여 결정, 취업 의지 확인', 신청방법:'고용24(work24.go.kr) 또는 고용센터 방문', 신청기한:'연중 상시', 전화문의:'1350', 상세조회url:'https://www.work24.go.kr', 지원내용:'진단·경력설계 수당 25만원, 훈련수당 월 최대 28.4만원, 취업 장려금 최대 150만원' },
+  { 서비스명:'에너지바우처', 서비스분야:'기초생활', 지원유형:'이용권', 소관기관명:'산업통상자원부', 지원대상:'기초생활수급자 중 노인·영유아·장애인·임산부·중증질환자 포함 가구', 선정기준:'에너지 취약계층 요건 충족, 소득 기준 충족', 신청방법:'주민센터 방문 신청', 신청기한:'매년 5~6월 신청', 전화문의:'1600-3190', 상세조회url:'https://www.energyv.or.kr', 지원내용:'1인 가구 연간 최대 95,000원, 가구원수 및 계절에 따라 차등' },
 ];
 
-// ???? 野꺜???怨밴묶 ????????????????????????????????????????????????????????????????????????????????????????????????
+// ── 검색 상태 ────────────────────────────────────────────────
 const _searchCache = {};
 
-// ???? ?紐? LLM ?됰슢??怨? 筌욊낯???紐꾪뀱 筌△뫀????????????????????????????????????????????????????????
+// ── 외부 LLM 브라우저 직접 호출 차단 ───────────────────────────
 async function callClaudeSearch() {
-  throw new Error('?됰슢??怨??癒?퐣 ?紐? LLM 筌욊낯???紐꾪뀱?? CORS/癰귣똻釉??類ㅼ퐠??곗쨮 ??쑵??源딆넅??뤿선 ??됰뮸??덈뼄.');
+  throw new Error('브라우저에서 외부 LLM 직접 호출은 CORS/보안 정책으로 비활성화되어 있습니다.');
 }
 
-// ???? ??곸삢 DB 野꺜??(??쇱뜖??疫꿸퀡而? ????????????????????????????????????????????????????????????
+// ── 내장 DB 검색 (키워드 기반) ──────────────────────────────
 function localKeywordSearch(keyword, category, supportType, limit = 20) {
   const kw = (keyword || '').toLowerCase();
   return POLICY_DB.filter(p => {
     const matchKw = !kw ||
-      (p.??뺥돩??살구||'').toLowerCase().includes(kw) ||
-      (p.筌왖?癒?땀??|'').toLowerCase().includes(kw) ||
-      (p.筌왖?癒???|'').toLowerCase().includes(kw) ||
-      (p.??뺥돩??삵뀋??|'').toLowerCase().includes(kw) ||
-      (p.???疫꿸퀗?筌?|'').toLowerCase().includes(kw);
-    const matchCat  = !category    || (p.??뺥돩??삵뀋??|'').includes(category);
-    const matchType = !supportType || (p.筌왖?癒????|'').includes(supportType);
+      (p.서비스명||'').toLowerCase().includes(kw) ||
+      (p.지원내용||'').toLowerCase().includes(kw) ||
+      (p.지원대상||'').toLowerCase().includes(kw) ||
+      (p.서비스분야||'').toLowerCase().includes(kw) ||
+      (p.소관기관명||'').toLowerCase().includes(kw);
+    const matchCat  = !category    || (p.서비스분야||'').includes(category);
+    const matchType = !supportType || (p.지원유형||'').includes(supportType);
     return matchKw && matchCat && matchType;
   }).slice(0, limit);
 }
 
-// ???? AI ?癒?염??野꺜??(Claude ??뽰뒠) ????????????????????????????????????????????????????????
+// ── AI 자연어 검색 (Claude 활용) ────────────────────────────
 async function localNaturalSearch(query, topK = 15) {
   const cacheKey = query + topK;
   if (_searchCache[cacheKey]) return _searchCache[cacheKey];
 
   const dbSummary = POLICY_DB.map((p,i) =>
-    `[${i}] ${p.??뺥돩??살구} / ${p.??뺥돩??삵뀋?? / ${p.筌왖?癒???? / ???? ${(p.筌왖?癒???|'').substring(0,60)}`
+    `[${i}] ${p.서비스명} / ${p.서비스분야} / ${p.지원유형} / 대상: ${(p.지원대상||'').substring(0,60)}`
   ).join('\n');
 
-  const prompt = `?諭??? ??볥럢 癰귣벊? ?類ㅼ퐠 野꺜???袁ⓓ?첎???낅빍??
-??쇱벉?? 癰귣벊? ?類ㅼ퐠 ?怨쀬뵠?怨뺤퓢??곷뮞??낅빍??
+  const prompt = `당신은 한국 복지 정책 검색 전문가입니다.
+다음은 복지 정책 데이터베이스입니다:
 ${dbSummary}
 
-?????野꺜??깅선: "${query}"
+사용자 검색어: "${query}"
 
-???類ㅼ퐠 餓??????野꺜??깅선?? 揶쎛???온????덈뮉 ?類ㅼ퐠???紐껊쑔??甕곕뜇?뉒몴?筌ㅼ뮆? ${topK}揶??ⓥ뫀???
-?온??ㅻ즲 ?誘? ??뽰몵嚥?JSON 獄쏄퀣肉닸에?뺤춸 ?臾먮뼗??뤾쉭?? ?? [2, 7, 0, 14]
-??삘뀲 ??살구 ??곸뵠 JSON 獄쏄퀣肉댐쭕??곗뮆???뤾쉭??`;
+위 정책 중 사용자 검색어와 가장 관련 있는 정책의 인덱스 번호를 최대 ${topK}개 골라서,
+관련도 높은 순으로 JSON 배열로만 응답하세요. 예: [2, 7, 0, 14]
+다른 설명 없이 JSON 배열만 출력하세요.`;
 
   try {
     const result = await callClaudeSearch(prompt);
@@ -222,69 +175,69 @@ ${dbSummary}
     _searchCache[cacheKey] = results;
     return results;
   } catch(e) {
-    // AI ??쎈솭 ????쇱뜖??野꺜??깆몵嚥???媛?
+    // AI 실패 시 키워드 검색으로 폴백
     return localKeywordSearch(query, '', '', topK);
   }
 }
 
-// ???? /analyze ??筌? 嚥≪뮇類??브쑴苑?獄쏄퉮肉??沃섎㈇????? ??????????????????????????????
+// ── /analyze 대체: 로컬 분석(백엔드 미가용 시) ───────────────
 async function localAnalyze(payload) {
-  const age        = payload.age || payload.??륁뵠 || '';
-  const region     = payload.region || payload.椰꾧퀣竊쒙쭪???|| '';
-  const income     = payload.income_percent ? `餓λ쵐????굣 ${payload.income_percent}%` : (payload.income || payload.?怨쀫꺖??|| '');
-  const family_type= payload.household_type || payload.揶쎛?닌딆???|| payload.family_type || '';
-  const employment = payload.employment_status || payload.?⑥쥙??怨밴묶 || payload.employment || '';
-  const disability = payload.disability || payload.?關釉??? || '??곸벉';
+  const age        = payload.age || payload.나이 || '';
+  const region     = payload.region || payload.거주지역 || '';
+  const income     = payload.income_percent ? `중위소득 ${payload.income_percent}%` : (payload.income || payload.연소득 || '');
+  const family_type= payload.household_type || payload.가구유형 || payload.family_type || '';
+  const employment = payload.employment_status || payload.고용상태 || payload.employment || '';
+  const disability = payload.disability || payload.장애여부 || '없음';
   const intent_tags = payload.intent_tags || [];
 
   const cacheKey = JSON.stringify(payload);
   if (_searchCache[cacheKey]) return _searchCache[cacheKey];
 
-  const query = [region, age ? `筌?${age}?? : '', income, family_type, employment, disability, intent_tags.join(' '), '癰귣벊? 筌왖???類ㅼ퐠 ?곕뗄荑?]
+  const query = [region, age ? `만 ${age}세` : '', income, family_type, employment, disability, intent_tags.join(' '), '복지 지원 정책 추천']
     .filter(Boolean)
     .join(' ');
   const candidates = await localNaturalSearch(query, 5);
   const cards = candidates.map((p, index) => {
     const score = Math.max(55, 92 - index * 7);
     return {
-      policy_id: (p.??뺥돩??살구 || '').replace(/[^\w揶쎛-??/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase() || `policy-${index + 1}`,
-      ??뺥돩??살구: p.??뺥돩??살구 || `?곕뗄荑??類ㅼ퐠 ${index + 1}`,
-      icon: p.??뺥돩??삵뀋??.includes('雅뚯눊援?) ? '?猷? : p.??뺥돩??삵뀋??.includes('?⑥쥙??) ? '?裕? : p.??뺥돩??삵뀋??.includes('?대Ŋ??) ? '??? : p.??뺥돩??삵뀋??.includes('疫뀀뜆??) ? '?猷? : p.??뺥돩??삵뀋??.includes('??롮┷') ? '?猷? : '?諭?,
-      subtitle: `${p.??뺥돩??삵뀋??|| '癰귣벊?'} 夷?${p.筌왖?癒????|| '筌왖??}`,
-      benefit_label: (p.筌왖?癒?땀??|| '').substring(0, 40) || '鈺곌퀗援??類ㅼ뵥 ?袁⑹뒄',
-      source_label: (p.???疫꿸퀗?筌?|| 'BenePick').substring(0, 8),
-      ??랁닋?類ｌぇ: score,
-      ??덉뵭???: [],
-      ??욧퍙獄쎻뫖苡? [],
-      ?怨쀪퐨??뽰맄: index + 1,
+      policy_id: (p.서비스명 || '').replace(/[^\w가-힣]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase() || `policy-${index + 1}`,
+      서비스명: p.서비스명 || `추천 정책 ${index + 1}`,
+      icon: p.서비스분야?.includes('주거') ? '🏠' : p.서비스분야?.includes('고용') ? '💼' : p.서비스분야?.includes('교육') ? '🎓' : p.서비스분야?.includes('금융') ? '🏦' : p.서비스분야?.includes('의료') ? '🏥' : '📋',
+      subtitle: `${p.서비스분야 || '복지'} · ${p.지원유형 || '지원'}`,
+      benefit_label: (p.지원내용 || '').substring(0, 40) || '조건 확인 필요',
+      source_label: (p.소관기관명 || 'BenePick').substring(0, 8),
+      수급확률: score,
+      탈락사유: [],
+      해결방법: [],
+      우선순위: index + 1,
       _css: _scoreToCSS(score),
     };
   });
-  const avg = cards.length ? Math.round(cards.reduce((s, c) => s + (c.??랁닋?類ｌぇ || 0), 0) / cards.length) : 0;
+  const avg = cards.length ? Math.round(cards.reduce((s, c) => s + (c.수급확률 || 0), 0) / cards.length) : 0;
   const result = {
     recommendation_cards: cards,
     stats: {
-      ????類ㅼ퐠?? cards.length,
-      ???뇧?類ｌぇ: avg,
-      ??됯맒??묒굺?? _formatDashboardBenefitLabel('', cards),
-      筌앸맩??醫롪퍕揶쎛?? cards.filter(c => (c.??랁닋?類ｌぇ || 0) >= 80).length,
+      해당정책수: cards.length,
+      평균확률: avg,
+      예상수혜액: cards[0]?.benefit_label || '-',
+      즉시신청가능: cards.filter(c => (c.수급확률 || 0) >= 80).length,
     },
     summary: _buildDashboardSummary(
       cards,
-      '獄쏄퉮肉???怨뚭퍙???븍뜆釉?類λ릭????곸삢 ?類ㅼ퐠 DB 疫꿸퀣???곗쨮 ?곕뗄荑??됰뮸??덈뼄. ??쎈뱜??곌쾿 ??됱젟 ??野껉퀗?든몴???쇰뻻 ?類ㅼ뵥??뤾쉭??'
+      '백엔드 연결이 불안정하여 내장 정책 DB 기준으로 추천했습니다. 네트워크 안정 후 결과를 다시 확인하세요.'
     ),
   };
   _searchCache[cacheKey] = { dashboard_data: result, cards, query_id: Date.now().toString() };
   return _searchCache[cacheKey];
 }
 
-// ???? 燁삳똾?믤⑥쥓??筌뤴뫖以?獄쏆꼹??????????????????????????????????????????????????????????????????????????????????
+// ── 카테고리 목록 반환 ────────────────────────────────────────
 function getLocalCategories() {
-  const cats = [...new Set(POLICY_DB.map(p => p.??뺥돩??삵뀋??.filter(Boolean))].sort();
+  const cats = [...new Set(POLICY_DB.map(p => p.서비스분야).filter(Boolean))].sort();
   return { categories: cats };
 }
 
-// ???? API 甕곗쥙?????쇱젟 ??????????????????????????????????????????????????????????????????????????????????????
+// ── API 베이스 설정 ───────────────────────────────────────────
 const API_BASE = (() => {
   const qp = new URLSearchParams(window.location.search);
   const fromQuery = qp.get('api_base');
@@ -294,7 +247,7 @@ const API_BASE = (() => {
   if (raw) return raw.replace(/\/+$/, '');
   const host = window.location.hostname;
   if (host === 'localhost' || host === '127.0.0.1') return 'http://localhost:8000';
-  return '';
+  return 'https://web-production-c3410.up.railway.app';
 })();
 let _useBackend = null;
 let _backendCheckedAt = 0;
@@ -326,22 +279,22 @@ function _toIncomeBand(percent) {
 
 function _toHouseholdType(value) {
   const v = String(value || '');
-  if (v.includes('1??) || v.includes('??ㅻ즴')) return 'SINGLE';
-  if (v.includes('2??)) return 'TWO_PERSON';
+  if (v.includes('1인') || v.includes('단독')) return 'SINGLE';
+  if (v.includes('2인')) return 'TWO_PERSON';
   return 'MULTI_PERSON';
 }
 
 function _toEmploymentStatus(value) {
   const v = String(value || '');
-  if (v.includes('?癒?겫')) return 'SELF_EMPLOYED';
-  if (v.includes('?類?뇣筌?) || v.includes('??쑴?숁뉩?뽰춦') || v.includes('?띯뫁毓??)) return 'EMPLOYED';
+  if (v.includes('자영')) return 'SELF_EMPLOYED';
+  if (v.includes('정규직') || v.includes('비정규직') || v.includes('취업자')) return 'EMPLOYED';
   return 'UNEMPLOYED';
 }
 
 function _toRegionCode(regionName) {
   const map = {
-    '??뽰뒻': 'KR-11', '?봔??: 'KR-26', '????: 'KR-27', '?紐꾩퓝': 'KR-28', '?용쵐竊?: 'KR-29', '????: 'KR-30', '?紐꾧텦': 'KR-31', '?紐꾩쪒': 'KR-36',
-    '野껋럡由?: 'KR-41', '揶쏅벡??: 'KR-42', '?겸뫖??: 'KR-43', '?겸뫖沅?: 'KR-44', '?袁⑦꽴': 'KR-45', '?袁④텚': 'KR-46', '野껋럥??: 'KR-47', '野껋럥沅?: 'KR-48', '??뽳폒': 'KR-50',
+    '서울': 'KR-11', '부산': 'KR-26', '대구': 'KR-27', '인천': 'KR-28', '광주': 'KR-29', '대전': 'KR-30', '울산': 'KR-31', '세종': 'KR-36',
+    '경기': 'KR-41', '강원': 'KR-42', '충북': 'KR-43', '충남': 'KR-44', '전북': 'KR-45', '전남': 'KR-46', '경북': 'KR-47', '경남': 'KR-48', '제주': 'KR-50',
   };
   const name = String(regionName || '');
   for (const [k, v] of Object.entries(map)) {
@@ -351,7 +304,7 @@ function _toRegionCode(regionName) {
 }
 
 function _toAnalyzeRequest(payload = {}) {
-  const regionName = payload.region || payload.region_name || payload.椰꾧퀣竊쒙쭪???|| '??뽰뒻?諛명??;
+  const regionName = payload.region || payload.region_name || payload.거주지역 || '서울특별시';
   return {
     age: Number(payload.age || 27),
     region_code: _toRegionCode(regionName),
@@ -361,55 +314,54 @@ function _toAnalyzeRequest(payload = {}) {
     employment_status: _toEmploymentStatus(payload.employment_status || payload.employment),
     housing_status: 'MONTHLY_RENT',
     interest_tags: Array.isArray(payload.intent_tags) ? payload.intent_tags : [],
-    lang_code: _getCurrentLang(),
   };
 }
 
 function _legacyCardFromPolicy(policy = {}, index = 0) {
   const score = Number(policy.match_score || 60);
-  const serviceName = policy.policy_name || policy.title || `?곕뗄荑??類ㅼ퐠 ${index + 1}`;
+  const serviceName = policy.policy_name || policy.title || `추천 정책 ${index + 1}`;
   const benefitAmount = Number(policy.benefit_amount || 0);
   return {
-    policy_id: policy.policy_id || serviceName.replace(/[^\w揶쎛-??/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase(),
+    policy_id: policy.policy_id || serviceName.replace(/[^\w가-힣]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase(),
     policy_name: serviceName,
-    ??뺥돩??살구: serviceName,
-    ??뺥돩??삵뀋?? (policy.badge_items && policy.badge_items[0]) || '',
-    筌왖?癒???? policy.apply_status || '',
-    ???疫꿸퀗?筌? 'BenePick',
-    筌왖?癒??? policy.description || '',
-    筌왖?癒?땀?? policy.benefit_summary || policy.benefit_amount_label || '',
-    ?怨멸쉭鈺곌퀬?턷rl: '#',
+    서비스명: serviceName,
+    서비스분야: (policy.badge_items && policy.badge_items[0]) || '',
+    지원유형: policy.apply_status || '',
+    소관기관명: 'BenePick',
+    지원대상: policy.description || '',
+    지원내용: policy.benefit_summary || policy.benefit_amount_label || '',
+    상세조회url: '#',
     subtitle: policy.description || policy.benefit_summary || '',
     benefit_label: policy.benefit_amount_label || policy.benefit_summary || '-',
     benefit_amount: Number.isFinite(benefitAmount) && benefitAmount > 0 ? benefitAmount : null,
     source_label: 'BenePick',
-    ??랁닋?類ｌぇ: score,
+    수급확률: score,
     score: Math.max(0, Math.min(1, score / 100)),
     _css: _scoreToCSS(score),
-    ??덉뵭???: [],
-    ??욧퍙獄쎻뫖苡? [],
-    ?怨쀪퐨??뽰맄: Number(policy.sort_order || index + 1),
+    탈락사유: [],
+    해결방법: [],
+    우선순위: Number(policy.sort_order || index + 1),
   };
 }
 
 function _toLegacyAnalyzeResponse(payload = {}) {
   const data = payload.data || {};
   const cards = (data.policies || []).map((p, i) => _legacyCardFromPolicy(p, i));
-  const avg = cards.length ? Math.round(cards.reduce((s, c) => s + (c.??랁닋?類ｌぇ || 0), 0) / cards.length) : 0;
+  const avg = cards.length ? Math.round(cards.reduce((s, c) => s + (c.수급확률 || 0), 0) / cards.length) : 0;
   const amountSum = cards.reduce((sum, card) => sum + (Number(card.benefit_amount) || 0), 0);
   const estimatedBenefitLabel = amountSum > 0
-    ? `${amountSum.toLocaleString()}??
-    : (_formatDashboardBenefitLabel('', cards));
+    ? `${amountSum.toLocaleString()}원`
+    : (cards[0]?.benefit_label || '-');
   return {
     query_id: payload.meta?.request_id || String(Date.now()),
     cards,
     dashboard_data: {
       recommendation_cards: cards,
       stats: {
-        ????類ㅼ퐠?? cards.length,
-        ???뇧?類ｌぇ: avg,
-        ??됯맒??묒굺?? estimatedBenefitLabel,
-        筌앸맩??醫롪퍕揶쎛?? cards.filter(c => (c.??랁닋?類ｌぇ || 0) >= 80).length,
+        해당정책수: cards.length,
+        평균확률: avg,
+        예상수혜액: estimatedBenefitLabel,
+        즉시신청가능: cards.filter(c => (c.수급확률 || 0) >= 80).length,
       },
       summary: data.rag_answer || _buildDashboardSummary(cards),
     },
@@ -423,130 +375,11 @@ function _toLegacySearchResponse(payload = {}) {
 
 function _extractBenefitLabelFromText(text) {
   const source = String(text || '');
-  const wonInMan = source.match(/(筌ㅼ뮆?|?????\s*([\d,]+)\s*筌?s*??);
-  if (wonInMan) return `${wonInMan[1] ? `${wonInMan[1]} ` : ''}${wonInMan[2]}筌띾슣??;
-  const won = source.match(/(筌ㅼ뮆?|?????\s*([\d,]+)\s*??);
-  if (won) return `${won[1] ? `${won[1]} ` : ''}${won[2]}??;
+  const wonInMan = source.match(/(최대|월|연)?\s*([\d,]+)\s*만\s*원/);
+  if (wonInMan) return `${wonInMan[1] ? `${wonInMan[1]} ` : ''}${wonInMan[2]}만원`;
+  const won = source.match(/(최대|월|연)?\s*([\d,]+)\s*원/);
+  if (won) return `${won[1] ? `${won[1]} ` : ''}${won[2]}원`;
   return '-';
-}
-
-let _policyExcerptFallbackPromise = null;
-
-async function _loadPolicyExcerptFallback() {
-  if (!_policyExcerptFallbackPromise) {
-    _policyExcerptFallbackPromise = fetch('/policy-excerpts-min.json', { cache: 'force-cache' })
-      .then(res => res.ok ? res.json() : null)
-      .catch(() => null);
-  }
-  return _policyExcerptFallbackPromise;
-}
-
-function _humanizeApplicationMethod(method, org, contact, url) {
-  const parts = [];
-  const normalized = String(method || '')
-    .replace(/\|\|/g, '\n')
-    .replace(/疫꿸퀬? ??ㅼ뵬?紐꾨뻿筌?g, '??ㅼ뵬???醫롪퍕')
-    .replace(/??ㅼ뵬?紐꾨뻿筌?g, '??ㅼ뵬???醫롪퍕')
-    .replace(/獄쎻뫖揆?醫롪퍕/g, '獄쎻뫖揆 ?醫롪퍕')
-    .replace(/\s*\n+\s*/g, ' / ')
-    .trim();
-  if (normalized) parts.push(normalized);
-  if (org && !parts.join(' ').includes(org)) parts.push(`?臾믩땾夷뚩눧紐꾩벥 疫꿸퀗?: ${org}`);
-  if (contact && !parts.join(' ').includes(contact)) parts.push(`?얜챷?? ${contact}`);
-  if (url) parts.push('?類μ넇???臾믩땾 揶쎛????????⑤벊????륁뵠筌왖?癒?퐣 ?類ㅼ뵥');
-  return parts.join(' / ');
-}
-
-function _looksBrokenPolicyExcerptText(value) {
-  const text = String(value || '').trim().replace(/\s+/g, ' ');
-  if (!text) return true;
-  if (text.length < 16) return true;
-  if (/^[\)\]\},.;:夷???-]/.test(text)) return true;
-  return (
-    text.startsWith('\ub839\uc740') ||
-    text.startsWith('\ub144\ub3c4\uc758') ||
-    text.startsWith('\uc774\ud558*') ||
-    text.startsWith('*') ||
-    text.includes('\uc6d0\ubb38 \ub370\uc774\ud130\uac00 \uc5c6\uc2b5\ub2c8\ub2e4')
-  );
-}
-
-function _preferPolicyExcerptFallback(current, fallback) {
-  if (_looksBrokenPolicyExcerptText(current)) {
-    return fallback || current || '';
-  }
-  return current || '';
-}
-
-async function _applyPolicyExcerptFallback(data, requestedPolicyId) {
-  if (!data) return data;
-  const raw = data.source_excerpt || {};
-  const fallbackIndex = await _loadPolicyExcerptFallback();
-  const fallback = fallbackIndex?.by_id?.[requestedPolicyId]
-    || fallbackIndex?.by_id?.[data.policy_id]
-    || fallbackIndex?.by_title?.[data.title]
-    || null;
-  if (!fallback) return data;
-
-  const officialUrl = raw.official_url || data.application_url || '';
-  data.source_excerpt = {
-    ...raw,
-    support_target_text: _preferPolicyExcerptFallback(raw.support_target_text, fallback.target),
-    selection_criteria_text: _preferPolicyExcerptFallback(raw.selection_criteria_text, fallback.criteria),
-    support_content_text: _preferPolicyExcerptFallback(raw.support_content_text, fallback.content),
-    application_period_text: raw.application_period_text || fallback.period || '',
-    application_method_text: _humanizeApplicationMethod(
-      raw.application_method_text || fallback.method,
-      fallback.org,
-      fallback.contact || raw.contact_text,
-      officialUrl,
-    ) || raw.application_method_text || fallback.method || '',
-    contact_text: raw.contact_text || fallback.contact || '',
-    official_url: officialUrl,
-  };
-  return data;
-}
-
-async function _detailFromExcerptFallback(policyId) {
-  const fallbackIndex = await _loadPolicyExcerptFallback();
-  const fallback = fallbackIndex?.by_id?.[policyId] || fallbackIndex?.by_title?.[policyId] || null;
-  if (!fallback) return null;
-  const method = _humanizeApplicationMethod(fallback.method, fallback.org, fallback.contact, fallback.url);
-  return {
-    policy_header: {
-      policy_name: fallback.title || policyId || '?類ㅼ퐠 ?怨멸쉭',
-      eligibility_percent: 60,
-      progress_color: 'blue',
-      icon: '?諭?,
-      percent_class: 'mid',
-      badge_label: '???類ㅼ뵥 ?袁⑹뒄',
-      badge_class: 'badge-blue',
-      subtitle: fallback.org || '',
-    },
-    description: '',
-    personal_summary: '?怨멸쉭 ?癒???????疫꿸퀣???곗쨮 ?醫롪퍕 ?類ｋ궖??癰귣벊???됰뮸??덈뼄. ?癒?봄 鈺곌퀗援?? ?⑤벊????륁뵠筌왖?癒?퐣 筌ㅼ뮇伊??類ㅼ뵥??뤾쉭??',
-    raw_excerpt: {
-      target: fallback.target || '',
-      criteria: fallback.criteria || '',
-      content: fallback.content || '',
-      period: fallback.period || '',
-      method: method || fallback.method || '',
-      phone: fallback.contact || '',
-      url: fallback.url || '',
-    },
-    issues: _buildIssuesFromDB(),
-    guides: [
-      { icon:'??, html:'<strong>1??ｍ? ?醫롪퍕 疫꿸퀗而??類ㅼ뵥</strong> ???癒??獄쏆뮇????醫롪퍕 疫꿸퀗而???믪눘? ?類ㅼ뵥??뤾쉭??' },
-      { icon:'?諭?, html:'<strong>2??ｍ? ?醫롪퍕 獄쎻뫖苡??類ㅼ뵥</strong> ???臾믩땾 疫꿸퀗????얜챷?쏙㎗?? ?類ㅼ뵥?????醫롪퍕 揶쎛????????癒???뤾쉭??' },
-      { icon:'?逾?, html:'<strong>3??ｍ? ?⑤벊????륁뵠筌왖 ?類ㅼ뵥</strong> ???類ㅼ퐠 ?怨멸쉭 URL?癒?퐣 筌ㅼ뮇???⑤벀??? ?臾믩땾 ?怨밴묶???類ㅼ뵥??뤾쉭??' },
-    ],
-    summary_stats: {
-      benefit_label: '-',
-      processing_period_label: '?類ㅼ뵥 ?袁⑹뒄',
-      issue_count: 1,
-      source_label: fallback.org || 'BenePick',
-    },
-  };
 }
 
 function _toLegacyDetailResponse(payload = {}) {
@@ -558,14 +391,14 @@ function _toLegacyDetailResponse(payload = {}) {
   const raw = data.source_excerpt || {};
 
   const issues = reasons.length
-    ? reasons.map(reason => ({ icon: '??, html: `<strong>${escHtml(reason)}</strong>` }))
-    : [{ icon: '??, html: '<strong>??덉뵭 ??? ??곸벉</strong> ??鈺곌퀗援??겸뫗?? }];
+    ? reasons.map(reason => ({ icon: '❌', html: `<strong>${escHtml(reason)}</strong>` }))
+    : [{ icon: '✅', html: '<strong>탈락 사유 없음</strong> — 조건 충족' }];
 
   const guides = actions.length
-    ? actions.map((action, idx) => ({ icon: idx === 0 ? '?? : '?諭?, html: `<strong>${idx + 1}??ｍ?</strong> ${escHtml(action)}` }))
+    ? actions.map((action, idx) => ({ icon: idx === 0 ? '✅' : '📎', html: `<strong>${idx + 1}단계:</strong> ${escHtml(action)}` }))
     : [
-        { icon: '??, html: '<strong>1??ｍ? AI ?브쑴苑???쎈뻬</strong> ???怨룸뼊 "??랁닋 揶쎛?關苑?AI ?브쑴苑???뽰삂??띾┛" 甕곌쑵????袁ⓥ뀮?紐꾩뒄.' },
-        { icon: '?逾?, html: '<strong>2??ｍ? ?⑤벊???醫롪퍕 ??륁뵠筌왖 ?類ㅼ뵥</strong> ???類ㅼ퐠 ?怨멸쉭 URL?癒?퐣 ?醫롪퍕 鈺곌퀗援???類ㅼ뵥??뤾쉭??' },
+        { icon: '✅', html: '<strong>1단계: AI 분석 실행</strong> — 상단 "수급 가능성 AI 분석 시작하기" 버튼을 누르세요.' },
+        { icon: '🔗', html: '<strong>2단계: 공식 신청 페이지 확인</strong> — 정책 상세 URL에서 신청 조건을 확인하세요.' },
       ];
 
   const rawContent = raw.support_content_text || data.description || '';
@@ -573,10 +406,10 @@ function _toLegacyDetailResponse(payload = {}) {
 
   return {
     policy_header: {
-      policy_name: data.title || data.policy_id || '?類ㅼ퐠 ?怨멸쉭',
+      policy_name: data.title || data.policy_id || '정책 상세',
       eligibility_percent: score,
       progress_color: css.progress_color,
-      icon: '?諭?,
+      icon: '📋',
       percent_class: css.percent_class,
       badge_label: css.badge_label,
       badge_class: css.badge_class,
@@ -586,13 +419,8 @@ function _toLegacyDetailResponse(payload = {}) {
     personal_summary: data.eligibility_summary || '',
     raw_excerpt: {
       target: raw.support_target_text || '',
-      criteria: raw.selection_criteria_text || '',
-      restriction: raw.restricted_target_text || '',
       content: raw.support_content_text || '',
-      period: raw.application_period_text || '',
       method: raw.application_method_text || '',
-      documents: raw.required_documents_text || '',
-      screening: raw.screening_method_text || '',
       phone: raw.contact_text || '',
       url: raw.official_url || data.application_url || '',
     },
@@ -600,55 +428,9 @@ function _toLegacyDetailResponse(payload = {}) {
     guides,
     summary_stats: {
       benefit_label: benefitLabel,
-      processing_period_label: '1~2揶쏆뮇??,
+      processing_period_label: '1~2개월',
       issue_count: reasons.length || 1,
       source_label: (data.managing_agency || 'BenePick').slice(0, 10),
-    },
-  };
-}
-
-function _detailFromCachedCard(card, policyId) {
-  const pct = card.??랁닋?類ｌぇ || card.eligibility_percent || card.match_score || 60;
-  const css = card._css || _scoreToCSS(pct);
-  const color = css.progress_color || (pct >= 80 ? 'green' : pct >= 60 ? 'blue' : 'orange');
-  const name = card.??뺥돩??살구 || card.policy_name || card.title || policyId || '?類ㅼ퐠 ?怨멸쉭';
-  const benefit = card.筌왖?癒?땀??|| card.benefit_summary || card.benefit_label || card.benefit_amount_label || '';
-  const target = card.筌왖?癒???|| card.description || card.subtitle || '';
-  const method = card.?醫롪퍕獄쎻뫖苡?|| card.application_method || '';
-  const url = card.?怨멸쉭鈺곌퀬?턷rl || card.application_url || card.source_url || '';
-
-  return {
-    policy_header: {
-      policy_name: name,
-      eligibility_percent: pct,
-      progress_color: color,
-      icon: card.icon || '?諭?,
-      percent_class: css.percent_class || 'mid',
-      badge_label: css.badge_label || '',
-      badge_class: css.badge_class || 'badge-blue',
-      subtitle: card.subtitle || card.???疫꿸퀗?筌?|| card.managing_agency || '',
-    },
-    description: target,
-    揶쏆뮇??遺용튋: card.揶쏆뮇??遺용튋 || card.personal_summary || '',
-    ?癒??쳸?뽱넾: {
-      筌왖?癒??? target,
-      ?醫롮젟疫꿸퀣?: card.?醫롮젟疫꿸퀣? || card.criteria || '',
-      ??쀫립???? card.??쀫립????|| card.restriction || '',
-      筌왖?癒?땀?? benefit,
-      ?醫롪퍕疫꿸퀗而? card.?醫롪퍕疫꿸퀬釉?|| card.application_period || '',
-      ?醫롪퍕獄쎻뫖苡? method,
-      ?袁⑹뒄??뺤첒: card.?袁⑹뒄??뺤첒 || card.required_documents || '',
-      ??沅쀨쳸?몄씩: card.??沅쀨쳸?몄씩 || card.screening || '',
-      ?袁れ넅?얜챷?? card.?袁れ넅?얜챷??|| card.phone || '',
-      ?怨멸쉭鈺곌퀬?턷rl: url,
-    },
-    issues: (card.??덉뵭??? !== undefined ? card.??덉뵭??? : null) || card.issues || _buildIssuesFromDB(),
-    guides: card.??욧퍙獄쎻뫖苡?|| card.guides || _buildGuidesFromDB(),
-    summary_stats: {
-      benefit_label: card.benefit_label || card.benefit_amount_label || _extractBenefitLabelFromText(benefit),
-      processing_period_label: '1~2揶쏆뮇??,
-      issue_count: (card.??덉뵭??? || card.issues || []).length || 1,
-      source_label: card.source_label || card.???疫꿸퀗?筌?|| card.managing_agency || 'BenePick',
     },
   };
 }
@@ -659,14 +441,13 @@ async function _fetchDetailFromBackend(policyId) {
   if (!useBackend) return null;
 
   try {
-    const res = await fetch(`${API_BASE}/api/v1/policies/${encodeURIComponent(policyId)}/detail?lang=${_getCurrentLang()}`, {
+    const res = await fetch(`${API_BASE}/api/v1/policies/${encodeURIComponent(policyId)}/detail?lang=ko`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
     });
     if (!res.ok) return null;
     const payload = await res.json().catch(() => ({}));
     if (!payload?.data) return null;
-    await _applyPolicyExcerptFallback(payload.data, policyId);
     return _toLegacyDetailResponse(payload);
   } catch (e) {
     console.warn('[detail] backend detail fetch failed:', e?.message || e);
@@ -686,9 +467,9 @@ function _mapLegacyPath(path, body) {
   if (path.startsWith('/search/natural')) {
     const params = new URLSearchParams(path.split('?')[1] || '');
     const q = params.get('q') || '';
-    const size = String(Math.min(Math.max(parseInt(params.get('top_k') || '20', 10) || 20, 1), 50));
+    const size = params.get('top_k') || '20';
     return {
-      url: `/api/v1/policies/search?${new URLSearchParams({ q, size, lang: _getCurrentLang() }).toString()}`,
+      url: `/api/v1/policies/search?${new URLSearchParams({ q, size, lang: 'ko' }).toString()}`,
       method: 'GET',
       transform: _toLegacySearchResponse,
     };
@@ -696,9 +477,9 @@ function _mapLegacyPath(path, body) {
   if (path.startsWith('/search/keyword')) {
     const params = new URLSearchParams(path.split('?')[1] || '');
     const q = params.get('keyword') || '';
-    const size = String(Math.min(Math.max(parseInt(params.get('limit') || '20', 10) || 20, 1), 50));
+    const size = params.get('limit') || '20';
     return {
-      url: `/api/v1/policies/search?${new URLSearchParams({ q, size, lang: _getCurrentLang() }).toString()}`,
+      url: `/api/v1/policies/search?${new URLSearchParams({ q, size, lang: 'ko' }).toString()}`,
       method: 'GET',
       transform: _toLegacySearchResponse,
     };
@@ -709,7 +490,7 @@ function _mapLegacyPath(path, body) {
   return null;
 }
 
-// ???? apiFetch: FastAPI ?怨쀪퐨 ????媛???곸삢 嚥≪뮇彛? ??????????????????????????????????
+// ── apiFetch: FastAPI 우선 → 폴백(내장 로직) ─────────────────
 async function apiFetch(path, options = {}) {
   const body = options.body ? JSON.parse(options.body) : null;
   let useBackend = await _checkBackend();
@@ -718,7 +499,7 @@ async function apiFetch(path, options = {}) {
     path.startsWith('/search/natural') ||
     path.startsWith('/search/keyword');
   if (!useBackend && needsBackend) {
-    // cold start 筌욊낱?묊몴??袁る퉸 ??甕?揶쏅벡???????
+    // cold start 직후를 위해 한 번 강제 재확인
     useBackend = await _checkBackend(true);
   }
 
@@ -733,22 +514,22 @@ async function apiFetch(path, options = {}) {
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(payload?.error?.message || payload?.detail?.message || `??뺤쒔 ??살첒 ${res.status}`);
+        throw new Error(payload?.error?.message || payload?.detail?.message || `서버 오류 ${res.status}`);
       }
       return mapped.transform ? mapped.transform(payload) : payload;
     } catch (err) {
       if (needsBackend && STRICT_CORE_BACKEND) {
-        const msg = err?.message || '獄쏄퉮肉???遺욧퍕 ??쎈솭';
-        throw new Error(`獄쏄퉮肉???怨뚭퍙 ??쎈솭: ${msg}`);
+        const msg = err?.message || '백엔드 요청 실패';
+        throw new Error(`백엔드 연결 실패: ${msg}`);
       }
     }
   }
 
   if (needsBackend && STRICT_CORE_BACKEND) {
-    throw new Error('獄쏄퉮肉???怨뚭퍙???袁⑹춦 餓Β??쑬由븝쭪? ??녿릭??щ빍?? ?醫롫뻻 ????쇰뻻 ??뺣즲??雅뚯눘苑??');
+    throw new Error('백엔드 연결이 아직 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.');
   }
 
-  // ???? ??媛? ??곸삢 嚥≪뮇彛?????
+  // ── 폴백: 내장 로직 ──
   if (needsBackend) {
     console.warn(`[apiFetch] backend unavailable, fallback path used: ${path}`);
   }
@@ -783,12 +564,12 @@ async function apiFetch(path, options = {}) {
     const start = (page - 1) * perPage;
     return { results: POLICY_DB.slice(start, start + perPage), total, total_pages: totalPages };
   }
-  throw new Error(`筌왖?癒곕릭筌왖 ??낅뮉 野껋럥以? ${path}`);
+  throw new Error(`지원하지 않는 경로: ${path}`);
 }
 
-// ?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름
-// ??쎄쾿??疫꿸퀡??(localStorage 疫꿸퀡而?
-// ?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름
+// ══════════════════════════════════════════════════════════════
+// 스크랩 기능 (localStorage 기반)
+// ══════════════════════════════════════════════════════════════
 
 const SCRAP_KEY = 'benefic_scraps';
 
@@ -803,7 +584,7 @@ function _isScrapped(policyId) {
 }
 
 function _showScrapToast(msg) {
-  // 疫꿸퀣???醫롫뮞?硫? ??됱몵筌???볤탢
+  // 기존 토스트가 있으면 제거
   document.querySelectorAll('.scrap-toast').forEach(t => t.remove());
   const toast = document.createElement('div');
   toast.className = 'scrap-toast';
@@ -819,10 +600,10 @@ function _showScrapToast(msg) {
 }
 
 function toggleScrap(policyId, btnEl) {
-  // 嚥≪뮄???筌ｋ똾寃?
+  // 로그인 체크
   const token = localStorage.getItem('token');
   if (!token) {
-    _showScrapToast('?逾?嚥≪뮄???????쎄쾿??븍막 ????됰선??);
+    _showScrapToast('🔑 로그인 후 스크랩할 수 있어요');
     setTimeout(() => { window.location.href = '/login'; }, 1200);
     return;
   }
@@ -834,40 +615,40 @@ function toggleScrap(policyId, btnEl) {
   if (willScrap) {
     scraps.push(policyId);
     btnEl.classList.add('active');
-    btnEl.textContent = '??;
-    btnEl.title = '??쎄쾿????곸젫';
-    btnEl.setAttribute('aria-label', '??쎄쾿????곸젫');
-    _showScrapToast('????쎄쾿??밸퓠 ???貫由??곸뒄');
+    btnEl.textContent = '★';
+    btnEl.title = '스크랩 해제';
+    btnEl.setAttribute('aria-label', '스크랩 해제');
+    _showScrapToast('⭐ 스크랩에 저장됐어요');
   } else {
     scraps.splice(idx, 1);
     btnEl.classList.remove('active');
-    btnEl.textContent = '??;
-    btnEl.title = '??쎄쾿??????;
-    btnEl.setAttribute('aria-label', '??쎄쾿??????);
-    _showScrapToast('??쎄쾿??뱀뵠 ??곸젫?癒?선??);
+    btnEl.textContent = '☆';
+    btnEl.title = '스크랩 저장';
+    btnEl.setAttribute('aria-label', '스크랩 저장');
+    _showScrapToast('스크랩이 해제됐어요');
   }
 
-  // ???醫딅빍筌롫뗄???
+  // 팝 애니메이션
   btnEl.classList.remove('pop');
-  void btnEl.offsetWidth; // reflow 揶쏅벡??
+  void btnEl.offsetWidth; // reflow 강제
   btnEl.classList.add('pop');
   btnEl.addEventListener('animationend', () => btnEl.classList.remove('pop'), { once: true });
 
   try {
     localStorage.setItem(SCRAP_KEY, JSON.stringify(scraps));
   } catch(e) {
-    console.warn('??쎄쾿????????쎈솭:', e);
+    console.warn('스크랩 저장 실패:', e);
   }
 }
 
-// ???? handleScrapToggle: ?袁⑨세?袁る뱜 筌뤿굞苑??紐낆넎 alias ????????????????????????????????
-// event.stopPropagation ??釉? ??쑬以덃뉩紐꾩뵥 筌ｋ똾寃? UI 筌앸맩??獄쏆꼷?? localStorage ??녿┛??
+// ── handleScrapToggle: 프롬프트 명세 호환 alias ────────────────
+// event.stopPropagation 포함, 비로그인 체크, UI 즉시 반영, localStorage 동기화
 function handleScrapToggle(event, policyId) {
   event.stopPropagation();
   toggleScrap(policyId, event.currentTarget);
 }
 
-// ???? ?癒?쑎 ?醫롫뮞????????????????????????????????????????????????????????????????????????????????????????????????
+// ── 에러 토스트 ───────────────────────────────────────────────
 function showToast(msg, type = 'error') {
   const toast = document.createElement('div');
   toast.style.cssText = `
@@ -881,106 +662,106 @@ function showToast(msg, type = 'error') {
   setTimeout(() => toast.remove(), 3500);
 }
 
-// ???? Intent ??볥젃 ?醫? (筌ㅼ뮆? 2揶? ????????????????????????????????????????????????????????????
+// ── Intent 태그 토글 (최대 2개) ──────────────────────────────
 function toggleIntent(el) {
   const tags = document.querySelectorAll('.intent-tag');
   const activeTags = document.querySelectorAll('.intent-tag.active');
 
   if (el.classList.contains('active')) {
     el.classList.remove('active');
-    // 2揶???쀫립 ??곸젫 ??disabled ??곸젫
+    // 2개 제한 해제 시 disabled 해제
     tags.forEach(t => t.classList.remove('disabled'));
   } else {
-    if (activeTags.length >= 2) return; // ??? 2揶??醫뤾문??
+    if (activeTags.length >= 2) return; // 이미 2개 선택됨
     el.classList.add('active');
-    // 2揶???筌≪눘?앾쭖???롢돢筌왖 ??쑵??源딆넅 (??볦퍟????곕굡獄?
+    // 2개 꽉 찼으면 나머지 비활성화 (시각적 피드백)
     if (activeTags.length + 1 >= 2) {
       tags.forEach(t => { if (!t.classList.contains('active')) t.classList.add('disabled'); });
     }
   }
 }
 
-// ???? ?醫뤾문??Intent ??볥젃 ??륁춿 ????????????????????????????????????????????????????????????????
+// ── 선택된 Intent 태그 수집 ────────────────────────────────
 function getSelectedIntents() {
   return Array.from(document.querySelectorAll('.intent-tag.active'))
     .map(el => el.dataset.intent)
     .filter(Boolean);
 }
 
-// ???? ??낆젾 ??깅퓠????????怨쀬뵠????륁춿 ????????????????????????????????????????????????????
+// ── 입력 폼에서 사용자 데이터 수집 ──────────────────────────
 function collectFormData() {
-  const ageVal        = document.getElementById('sel-age')?.value        || '筌?27??;
-  const regionVal     = document.getElementById('sel-region')?.value     || '??뽰뒻?諛명??;
-  const incomeVal     = document.getElementById('sel-income')?.value     || '餓λ쵐????굣 50~60%';
-  const familyVal     = document.getElementById('sel-family')?.value     || '1??揶쎛??;
-  const empVal        = document.getElementById('sel-employment')?.value || '沃섎챷???;
-  const disabilityVal = document.getElementById('sel-disability')?.value || '??곸벉';
+  const ageVal        = document.getElementById('sel-age')?.value        || '만 27세';
+  const regionVal     = document.getElementById('sel-region')?.value     || '서울특별시';
+  const incomeVal     = document.getElementById('sel-income')?.value     || '중위소득 50~60%';
+  const familyVal     = document.getElementById('sel-family')?.value     || '1인 가구';
+  const empVal        = document.getElementById('sel-employment')?.value || '미취업';
+  const disabilityVal = document.getElementById('sel-disability')?.value || '없음';
 
-  // ???? ??륁뵠 ???뼓: "筌?27?? / "筌?65????곴맒" ????ъ쁽
+  // ── 나이 파싱: "만 27세" / "만 65세 이상" → 숫자
   const ageMatch = ageVal.match(/\d+/);
   const age = ageMatch ? parseInt(ageMatch[0]) : 27;
 
-  // ???? ???굣 ???뼓 ??income_percent
+  // ── 소득 파싱 → income_percent
   let income_percent = 55;
   const rangeMatch  = incomeVal.match(/(\d+)[~\-](\d+)/);
-  const singleMatch = incomeVal.match(/(\d+)%\s*(??꾨릭|?λ뜃??/);
+  const singleMatch = incomeVal.match(/(\d+)%\s*(이하|초과)/);
   if (rangeMatch) {
     income_percent = Math.round((parseInt(rangeMatch[1]) + parseInt(rangeMatch[2])) / 2);
   } else if (singleMatch) {
-    income_percent = singleMatch[2] === '??꾨릭'
+    income_percent = singleMatch[2] === '이하'
       ? Math.round(parseInt(singleMatch[1]) * 0.7)
       : parseInt(singleMatch[1]) + 10;
   }
 
-  // ???? 揶쎛?닌딆뜚???곕뗄??
+  // ── 가구원수 추정
   const sizeMap = {
-    '1??揶쎛??:1, '2??揶쎛??:2, '3??揶쎛??:3, '4????곴맒 揶쎛??:4,
-    '???筌?揶쎛??:2, '??쇱쁽?? 揶쎛??:4, '??뿅??揶쎛??:3,
-    '鈺곌퀣? 揶쎛??:2, '?紐꾩뵥 ??ㅻ즴 揶쎛??:1,
+    '1인 가구':1, '2인 가구':2, '3인 가구':3, '4인 이상 가구':4,
+    '한부모 가구':2, '다자녀 가구':4, '다문화 가구':3,
+    '조손 가구':2, '노인 단독 가구':1,
   };
   const household_size = sizeMap[familyVal] || 1;
 
-  // ???? ?띯뫁毓?怨밴묶 ??scoring.py ?紐낆넎
+  // ── 취업상태 → scoring.py 호환
   const empMap = {
-    '沃섎챷???:                     '?닌딆춦??(??쇰씜)',
-    '?띯뫁毓??(?類?뇣筌?':             '?띯뫁毓??(?類?뇣筌?',
-    '?띯뫁毓??(??쑴?숁뉩?뽰춦/?④쑴鍮잞쭪?':    '?띯뫁毓??(??쑴?숁뉩?뽰춦/?④쑴鍮잞쭪?',
-    '?癒?겫??놁쁽':                    '?癒?겫??놁쁽',
-    '?닌딆춦??(??쇰씜)':               '?닌딆춦??(??쇰씜)',
-    '??덇문':                        '??덇문',
-    '??る툡??곸춦 餓?:                 '??る툡??곸춦 餓?,
-    '?얜똻彛?:                        '?얜똻彛?,
+    '미취업':                     '구직자 (실업)',
+    '취업자 (정규직)':             '취업자 (정규직)',
+    '취업자 (비정규직/계약직)':    '취업자 (비정규직/계약직)',
+    '자영업자':                    '자영업자',
+    '구직자 (실업)':               '구직자 (실업)',
+    '학생':                        '학생',
+    '육아휴직 중':                 '육아휴직 중',
+    '무직':                        '무직',
   };
 
-  // ???? ??뿅?遺?????? (揶쎛?닌딆??類ㅻ퓠???癒?짗 ?癒?뼊)
-  const multicultural = familyVal === '??뿅??揶쎛??;
+  // ── 다문화가구 여부 (가구유형에서 자동 판단)
+  const multicultural = familyVal === '다문화 가구';
 
-  // ???? scoring.py 6揶????됪??袁⑹읈 ??깊뒄??롫뮉 payload
+  // ── scoring.py 6개 항목과 완전 일치하는 payload
   return {
-    user_name:         document.querySelector('.avatar-name')?.textContent?.replace('??,'') || '?????,
-    age,                                          // ????륁뵠
-    region:            regionVal,                 // ??椰꾧퀣竊쒙쭪???
-    income_percent,                               // ???怨쀫꺖??(餓λ쵐????굣 % ??뤾텦)
-    household_type:    familyVal,                 // ??揶쎛?닌딆???
-    household_size,                               // ??揶쎛?닌딆뜚??
-    employment_status: empMap[empVal] || empVal,  // ???⑥쥙??怨밴묶
-    disability:        disabilityVal,             // ???關釉??? ????덉쨮 ?곕떽?
+    user_name:         document.querySelector('.avatar-name')?.textContent?.replace('님','') || '사용자',
+    age,                                          // → 나이
+    region:            regionVal,                 // → 거주지역
+    income_percent,                               // → 연소득 (중위소득 % 환산)
+    household_type:    familyVal,                 // → 가구유형
+    household_size,                               // → 가구원수
+    employment_status: empMap[empVal] || empVal,  // → 고용상태
+    disability:        disabilityVal,             // → 장애여부 ← 새로 추가
     veteran:           false,
     multicultural,
-    education_level:   '??鈺?,
+    education_level:   '대졸',
     language:          'ko',
-    intent_tags:       getSelectedIntents(),  // ???온???브쑴鍮???볥젃
+    intent_tags:       getSelectedIntents(),  // ← 관심 분야 태그
   };
 }
 
-// ???? ????뺣궖?????쐭筌???????????????????????????????????????????????????????????????????????????????????????
+// ── 대시보드 렌더링 ───────────────────────────────────────────
 function renderDashboard(data) {
-  // Claude API ?臾먮뼗 ?닌듼?? 疫꿸퀣???닌듼?筌뤴뫀紐??紐낆넎
-  const recommendation_cards = data.recommendation_cards || data.????????|| [];
-  const stats = data.stats || data.????뺣궖??쀫꽰??|| {};
-  const summary = data.summary || data.?ル굟鍮?遺용튋 || '';
+  // Claude API 응답 구조와 기존 구조 모두 호환
+  const recommendation_cards = data.recommendation_cards || data.포트폴리오 || [];
+  const stats = data.stats || data.대시보드통계 || {};
+  const summary = data.summary || data.종합요약 || '';
 
-  // ??????袁⑥쨮????낅쑓??꾨뱜 (??揶?疫꿸퀡而?
+  // 사용자 프로필 업데이트 (폼 값 기반)
   const ageVal    = document.getElementById('sel-age')?.value    || '';
   const regionVal = document.getElementById('sel-region')?.value || '';
   const familyVal = document.getElementById('sel-family')?.value || '';
@@ -989,47 +770,47 @@ function renderDashboard(data) {
 
   const profileH2 = document.querySelector('.profile-info h2');
   if (profileH2) {
-    const userName = getAuthUser()?.name || '?????;
-    profileH2.textContent = `${userName}??癰귣벊? ?브쑴苑?野껉퀗??;
+    const userName = getAuthUser()?.name || '사용자';
+    profileH2.textContent = `${userName}의 복지 분석 결과`;
   }
 
   const profileP = document.querySelector('.profile-info p');
-  const now = new Date(); const hm = `${now.getHours()}??${now.getMinutes()}??;
-  if (profileP) profileP.textContent = `筌띾뜆?筌???낅쑓??꾨뱜: ??삳뮎 ${hm} 夷?${regionVal}`;
+  const now = new Date(); const hm = `${now.getHours()}시 ${now.getMinutes()}분`;
+  if (profileP) profileP.textContent = `마지막 업데이트: 오늘 ${hm} · ${regionVal}`;
 
   const tagsEl = document.querySelector('.profile-tags');
   if (tagsEl && ageVal) {
     tagsEl.innerHTML = [
-      ageVal ? `?諭?${ageVal}` : '',
-      regionVal ? `?諭?${regionVal}` : '',
-      incomeVal ? `?裕?${incomeVal}` : '',
-      familyVal ? `?猷?${familyVal}` : '',
-      empVal ? `?紐?${empVal}` : '',
+      ageVal ? `📅 ${ageVal}` : '',
+      regionVal ? `📍 ${regionVal}` : '',
+      incomeVal ? `💰 ${incomeVal}` : '',
+      familyVal ? `🏠 ${familyVal}` : '',
+      empVal ? `👔 ${empVal}` : '',
     ].filter(Boolean).map(t => `<span class="profile-tag">${t}</span>`).join('');
   }
 
-  // ??????낅쑓??꾨뱜
+  // 통계 업데이트
   const valEls = document.querySelectorAll('.stat-item .val');
   if (valEls.length >= 4) {
-    if (valEls[0]) valEls[0].textContent = String(stats.????類ㅼ퐠???? recommendation_cards.length ?? 0);
-    if (valEls[1]) valEls[1].textContent = `${String(stats.???뇧?類ｌぇ ?? 0)}%`;
-    if (valEls[2]) valEls[2].textContent = _formatDashboardBenefitLabel(Object.values(stats || {})[2] ?? '-', recommendation_cards);
-    if (valEls[3]) valEls[3].textContent = String(stats.筌앸맩??醫롪퍕揶쎛???? 0);
+    if (valEls[0]) valEls[0].textContent = String(stats.해당정책수 ?? recommendation_cards.length ?? 0);
+    if (valEls[1]) valEls[1].textContent = `${String(stats.평균확률 ?? 0)}%`;
+    if (valEls[2]) valEls[2].textContent = String(stats.예상수혜액 ?? '-');
+    if (valEls[3]) valEls[3].textContent = String(stats.즉시신청가능 ?? 0);
     const scoreNum = document.querySelector('.score-num');
-    if (scoreNum) scoreNum.textContent = String(stats.???뇧?類ｌぇ ?? 0);
+    if (scoreNum) scoreNum.textContent = String(stats.평균확률 ?? 0);
   }
 
-  // ?類ㅼ퐠 燁삳?諭?筌뤴뫖以?
+  // 정책 카드 목록
   const policyList = document.querySelector('.policy-list');
   if (policyList && recommendation_cards.length) {
     policyList.innerHTML = recommendation_cards.map(card => {
       const css      = card._css || {};
-      const pct      = card.??랁닋?類ｌぇ || card.eligibility_percent || 0;
-      const name     = card.??뺥돩??살구 || card.policy_name || '';
+      const pct      = card.수급확률 || card.eligibility_percent || 0;
+      const name     = card.서비스명 || card.policy_name || '';
       const subtitle = card.subtitle || '';
       const benefit  = card.benefit_label || '';
       const source   = card.source_label || 'Gov24';
-      const icon     = card.icon || '?諭?;
+      const icon     = card.icon || '📋';
       const pid      = card.policy_id || '';
       const barColor = css.progress_color || 'blue';
       const isScrapped = _isScrapped(pid);
@@ -1039,9 +820,9 @@ function renderDashboard(data) {
             class="scrap-btn ${isScrapped ? 'active' : ''}"
             data-policy-id="${escHtml(pid)}"
             onclick="handleScrapToggle(event, '${escHtml(pid)}')"
-            title="${isScrapped ? '??쎄쾿????곸젫' : '??쎄쾿??????}"
-            aria-label="${isScrapped ? '??쎄쾿????곸젫' : '??쎄쾿??????}"
-          >${isScrapped ? '?? : '??}</button>
+            title="${isScrapped ? '스크랩 해제' : '스크랩 저장'}"
+            aria-label="${isScrapped ? '스크랩 해제' : '스크랩 저장'}"
+          >${isScrapped ? '★' : '☆'}</button>
           <div class="policy-top-row">
             <div class="policy-left" style="padding-right:44px">
               <div class="policy-icon ${css.icon_color || css.progress_color || 'blue'}">${icon}</div>
@@ -1049,7 +830,7 @@ function renderDashboard(data) {
                 <h4>${escHtml(name)}</h4>
                 <p>${escHtml(subtitle)}</p>
                 <div class="policy-badges">
-                  <span class="badge ${css.badge_class || 'badge-blue'}">${css.badge_label || '?類ㅼ뵥 ?袁⑹뒄'}</span>
+                  <span class="badge ${css.badge_class || 'badge-blue'}">${css.badge_label || '확인 필요'}</span>
                   <span class="badge badge-blue">${escHtml(source)}</span>
                   <span class="badge badge-gray">${escHtml(benefit)}</span>
                 </div>
@@ -1057,30 +838,25 @@ function renderDashboard(data) {
             </div>
             <div class="policy-percent">
               <div class="percent-num ${css.percent_class || 'mid'}">${pct}<span style="font-size:18px">%</span></div>
-              <div class="percent-label">??랁닋 ?類ｌぇ</div>
+              <div class="percent-label">수급 확률</div>
             </div>
           </div>
-          <div class="progress-row policy-progress-row">
+          <div class="progress-row">
             <div class="progress-track">
               <div class="progress-fill ${barColor}" style="width:${pct}%"></div>
             </div>
-          </div>
-          <div class="policy-footer-row">
             <div class="benefit-chip">${escHtml(benefit)}</div>
-            <div class="policy-action">?? ?? ?? ?</div>
           </div>
+          <div class="policy-action">상세 분석 보기 →</div>
         </div>`;
     }).join('');
-    Array.from(policyList.childNodes).forEach(node => {
-      if (node.nodeType === Node.TEXT_NODE) node.remove();
-    });
   }
 
-  // ?????????袁ⓥ봺???????뺤뺍 ??낅쑓??꾨뱜 (??됱뱽 野껋럩??
+  // 포트폴리오 프리뷰 사이드바 업데이트 (있을 경우)
   const portTotal = document.querySelector('.portfolio-total .amount');
-  if (portTotal) portTotal.textContent = _formatDashboardBenefitLabel(Object.values(stats || {})[2] ?? '-', recommendation_cards);
+  if (portTotal && stats.예상수혜액) portTotal.textContent = stats.예상수혜액;
 
-  // ?ル굟鍮?遺용튋?? ????뺣궖???袁⑹뒠 獄쏅벡??癒?춸 ??뽯뻻 (??????紐꾧텢??꾨뱜/CTA ??쇰옘 獄쎻뫗?)
+  // 종합요약은 대시보드 전용 박스에만 표시 (사이드 인사이트/CTA 오염 방지)
   const dashSummaryWrap = document.getElementById('dashboard-rag-summary');
   const dashSummaryText = document.getElementById('dashboard-rag-summary-text');
   if (dashSummaryWrap && dashSummaryText) {
@@ -1094,49 +870,49 @@ function renderDashboard(data) {
   }
 }
 
-// ???? ?怨멸쉭 ?브쑴苑??遺얇늺 ???쐭筌???????????????????????????????????????????????????????????????????????????
+// ── 상세 분석 화면 렌더링 ─────────────────────────────────────
 function renderDetail(detailData) {
   const { policy_header, issues, guides, summary_stats } = detailData;
   const pct   = policy_header.eligibility_percent;
   const color = policy_header.progress_color || (pct >= 80 ? 'green' : pct >= 60 ? 'blue' : 'orange');
 
-  // ?類ㅼ퐠筌?
+  // 정책명
   document.getElementById('detail-policy-name').textContent = policy_header.policy_name;
 
-  // ?袁⑹뵠??
+  // 아이콘
   const iconEl = document.querySelector('#screen-detail .detail-icon');
   if (iconEl && policy_header.icon) iconEl.textContent = policy_header.icon;
 
-  // ??랁닋 ?類ｌぇ ??ъ쁽 + % ??깃맒
+  // 수급 확률 숫자 + % 색상
   const pctEl = document.getElementById('detail-pct');
   if (pctEl) pctEl.textContent = pct;
   const pctSign = document.querySelector('#screen-detail .detail-prob span[style]');
   const pctColor = color === 'green' ? 'var(--green)' : color === 'blue' ? 'var(--blue)' : 'var(--orange)';
   if (pctSign) pctSign.style.color = pctColor;
 
-  // 筌욊쑵六얕쳸?
+  // 진행바
   const bar = document.getElementById('detail-bar');
   if (bar) {
     bar.className   = `progress-fill ${color}`;
     bar.style.width = pct + '%';
-    // ?醫딅빍筌롫뗄???
+    // 애니메이션
     bar.style.width = '0';
     requestAnimationFrame(() => { setTimeout(() => { bar.style.width = pct + '%'; }, 60); });
   }
 
-  // issue-item ???쐭筌?
+  // issue-item 렌더링
   const issueSection = document.getElementById('detail-issue-section');
   if (issueSection) {
     const noIssue = !issues || issues.length === 0 ||
-      (issues.length === 1 && (issues[0].icon === '?? ||
-        (issues[0].html || '').includes('??덉뵭 ?遺우뵥 ??곸벉') ||
-        (issues[0].html || '').includes('?브쑴苑???)));
+      (issues.length === 1 && (issues[0].icon === '✅' ||
+        (issues[0].html || '').includes('탈락 요인 없음') ||
+        (issues[0].html || '').includes('분석 전')));
     issueSection.innerHTML = `
-      <div class="analysis-label">????덉뵭 ??됯맒 ??곸?</div>
+      <div class="analysis-label">❌ 탈락 예상 이유</div>
       ${noIssue
-        ? `<div class="issue-item"><span class="icon">??/span><p><strong>??덉뵭 ??? ??곸벉</strong> ??鈺곌퀗援??겸뫗??/p></div>`
+        ? `<div class="issue-item"><span class="icon">✅</span><p><strong>탈락 사유 없음</strong> — 조건 충족</p></div>`
         : issues.map(iss => {
-            const icon = iss.icon || '?醫묓닔';
+            const icon = iss.icon || '⚠️';
             const text = typeof iss.html === 'string' ? iss.html : (iss.html?.html || JSON.stringify(iss.html));
             return `<div class="issue-item"><span class="icon">${icon}</span><p>${text}</p></div>`;
           }).join('')
@@ -1144,110 +920,85 @@ function renderDetail(detailData) {
     `;
   }
 
-  // guide-item ???쐭筌?
+  // guide-item 렌더링
   const guideSection = document.getElementById('detail-guide-section');
   if (guideSection) {
     guideSection.innerHTML = `
-      <div class="analysis-label">?裕???욧퍙 獄쎻뫖苡?&amp; ??곕짗 揶쎛??諭?/div>
+      <div class="analysis-label">💡 해결 방법 &amp; 행동 가이드</div>
       ${guides.map(g => {
-        const icon = g.icon || '??;
+        const icon = g.icon || '✅';
         const text = typeof g.html === 'string' ? g.html : (g.html?.html || JSON.stringify(g.html));
         return `<div class="guide-item"><span class="icon">${icon}</span><p>${text}</p></div>`;
       }).join('')}
     `;
   }
 
-  // ?????뺤뺍 ????(detail ?遺얇늺)
+  // 사이드바 통계 (detail 화면)
   const detailStats = document.querySelectorAll('#screen-detail .stat-item .val');
   if (detailStats.length >= 4) {
     detailStats[0].textContent  = pct + '%';
     detailStats[0].className    = `val ${color}`;
     detailStats[1].textContent  = summary_stats.benefit_label;
     detailStats[2].textContent  = summary_stats.processing_period_label;
-    detailStats[3].textContent  = summary_stats.issue_count + '椰?;
+    detailStats[3].textContent  = summary_stats.issue_count + '건';
   }
 
-  // AI ???뼎?遺용튋 獄쏅벡??嚥≪뮆諭?
+  // AI 핵심요약 박스 로드
   renderAiSummary(detailData);
 }
 
-// ???? ?癒??獄쏆뮇??獄쏅벡?????쐭筌?????????????????????????????????????????????????????????????????????????
+// ── 원문 발췌 박스 렌더링 ────────────────────────────────────
 async function renderAiSummary(detailData) {
   const box = document.getElementById('ai-summary-content');
   if (!box) return;
 
-  let personalSummary = detailData.揶쏆뮇??遺용튋 || detailData.personal_summary || '';
-  const rawFromDetail = detailData.?癒??쳸?뽱넾 || detailData.raw_excerpt || {};
+  const personalSummary = detailData.개인요약 || detailData.personal_summary || '';
+  const rawFromDetail = detailData.원문발췌 || detailData.raw_excerpt || {};
   const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
-  const isWeakPersonalSummary = (s) => {
-    const t = norm(s);
-    if (!t) return false;
-    return [
-      '雅뚯눘?????怨? 筌왖?癒??怨몄뿯??덈뼄',
-      '雅뚯눘??筌왖????곸뒠?? 筌왖?癒??怨몄뿯??덈뼄',
-      '雅뚯눘?????怨? 筌왖?癒?땀??뱀뿯??덈뼄',
-      '雅뚯눘??筌왖????곸뒠?? 筌왖?癒?땀??뱀뿯??덈뼄',
-      '雅뚯눘?????怨? 筌왖?????怨몄뿯??덈뼄',
-      '雅뚯눘??筌왖????곸뒠?? 筌왖????곸뒠??낅빍??,
-    ].some((phrase) => t.includes(phrase));
-  };
   const truncate = (s, max) => {
     const t = norm(s);
     if (!t) return '';
-    return t.length > max ? `${t.substring(0, max)}?? : t;
+    return t.length > max ? `${t.substring(0, max)}…` : t;
   };
 
-  let rawTarget = rawFromDetail.筌왖?癒???|| rawFromDetail.target || detailData.description || '';
-  const rawCriteria = rawFromDetail.?醫롮젟疫꿸퀣? || rawFromDetail.criteria || '';
-  const rawRestriction = rawFromDetail.??쀫립????|| rawFromDetail.restriction || '';
-  let rawContent = rawFromDetail.筌왖?癒?땀??|| rawFromDetail.content || '';
-  const rawPeriod = rawFromDetail.?醫롪퍕疫꿸퀗而?|| rawFromDetail.period || '?癒????醫롪퍕 疫꿸퀗而??筌뤿굞???뤿선 ??? ??녿뮸??덈뼄. ?⑤벊????륁뵠筌왖?癒?퐣 ?臾믩땾 揶쎛????????類ㅼ뵥??뤾쉭??';
-  const rawMethod = rawFromDetail.?醫롪퍕獄쎻뫖苡?|| rawFromDetail.method || '';
-  const rawDocuments = rawFromDetail.?袁⑹뒄??뺤첒 || rawFromDetail.documents || '';
-  const rawScreening = rawFromDetail.??沅쀨쳸?몄씩 || rawFromDetail.screening || '';
-  const rawPhone = rawFromDetail.?袁れ넅?얜챷??|| rawFromDetail.phone || '';
-  const rawUrl = rawFromDetail.?怨멸쉭鈺곌퀬?턷rl || rawFromDetail.url || '';
+  let rawTarget = rawFromDetail.지원대상 || rawFromDetail.target || detailData.description || '';
+  let rawContent = rawFromDetail.지원내용 || rawFromDetail.content || '';
+  const rawMethod = rawFromDetail.신청방법 || rawFromDetail.method || '';
+  const rawPhone = rawFromDetail.전화문의 || rawFromDetail.phone || '';
+  const rawUrl = rawFromDetail.상세조회url || rawFromDetail.url || '';
 
   const normTarget = norm(rawTarget);
   const normContent = norm(rawContent);
   if (normTarget && normContent && normTarget === normContent) {
-    // ??덉뵬 癰귣챶揆??餓λ쵎???곗뮆???롫뮉 ?얜챷??獄쎻뫗?
+    // 동일 본문이 중복 출력되는 문제 방지
     rawContent = '';
   }
   if (!norm(rawContent) && detailData.summary_stats?.benefit_label && detailData.summary_stats?.benefit_label !== '-') {
     rawContent = detailData.summary_stats.benefit_label;
   }
-  if (isWeakPersonalSummary(personalSummary)) {
-    personalSummary = '';
-  }
 
   if (!personalSummary && !rawTarget && !rawContent && !rawMethod) {
-    box.innerHTML = `<div class="ai-summary-row"><span class="ai-summary-icon">?諭?/span><span style="font-size:12px;color:var(--gray-500)">?癒???怨쀬뵠?怨? ??곷뮸??덈뼄. ?⑤벊????륁뵠筌왖?癒?퐣 ?類ㅼ뵥??뤾쉭??</span></div>`;
+    box.innerHTML = `<div class="ai-summary-row"><span class="ai-summary-icon">📌</span><span style="font-size:12px;color:var(--gray-500)">원문 데이터가 없습니다. 공식 페이지에서 확인하세요.</span></div>`;
     return;
   }
 
   const md2html = s => (s||'').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   const rows = [
-    rawTarget      ? { label:'?諭?筌왖??????, value: truncate(rawTarget, 720) } : null,
-    rawCriteria    ? { label:'???醫롮젟/???굣 疫꿸퀣?', value: truncate(rawCriteria, 520) } : null,
-    rawRestriction ? { label:'?????쀫립 ????, value: truncate(rawRestriction, 420) } : null,
-    rawContent     ? { label:'?裕?筌왖????곸뒠', value: truncate(rawContent, 720) } : null,
-    rawPeriod      ? { label:'?肉롦닼??醫롪퍕 疫꿸퀗而?, value: truncate(rawPeriod, 360) } : null,
-    rawMethod      ? { label:'?諭??醫롪퍕 獄쎻뫖苡?, value: truncate(rawMethod, 420) } : null,
-    rawDocuments   ? { label:'?諭??袁⑹뒄 ??뺤첒', value: truncate(rawDocuments, 420) } : null,
-    rawScreening   ? { label:'?逾???沅?獄쎻뫖苡?, value: truncate(rawScreening, 320) } : null,
+    rawTarget  ? { label:'📌 지원 대상', value: truncate(rawTarget, 260) } : null,
+    rawContent ? { label:'💰 지원 내용', value: truncate(rawContent, 260) } : null,
+    rawMethod  ? { label:'📋 신청 방법', value: truncate(rawMethod, 200) } : null,
   ].filter(Boolean);
 
-  const personalHtml = personalSummary && rows.length === 0
+  const personalHtml = personalSummary
     ? `<div class="ai-summary-row" style="border-bottom:1px solid rgba(245,195,60,.15);margin-bottom:8px;padding-bottom:8px;">
-        <span class="ai-summary-icon">?諭?/span>
+        <span class="ai-summary-icon">📄</span>
         <div style="flex:1;font-size:13.5px;font-weight:500;line-height:1.65;color:#2D2200">${md2html(personalSummary)}</div>
       </div>`
     : '';
 
   box.innerHTML = personalHtml + rows.map(r =>
     `<div class="ai-summary-row">
-      <span class="ai-summary-icon" style="font-size:13px;min-width:16px;">??/span>
+      <span class="ai-summary-icon" style="font-size:13px;min-width:16px;">▍</span>
       <div style="flex:1;">
         <div class="ai-summary-source-label">${r.label}</div>
         <div class="ai-summary-excerpt">${md2html(r.value)}</div>
@@ -1255,150 +1006,175 @@ async function renderAiSummary(detailData) {
     </div>`
   ).join('') + (rawPhone || rawUrl ? `
     <div style="margin-top:10px;display:flex;gap:12px;flex-wrap:wrap;padding-top:8px;border-top:1px solid rgba(245,195,60,.2)">
-      ${rawPhone ? `<span style="font-size:11px;color:var(--gray-500)">?諭?${rawPhone}</span>` : ''}
-      ${rawUrl   ? `<a href="${rawUrl}" target="_blank" style="font-size:11px;color:var(--blue);text-decoration:none;font-weight:600">?逾??⑤벊????륁뵠筌왖 ??/a>` : ''}
+      ${rawPhone ? `<span style="font-size:11px;color:var(--gray-500)">📞 ${rawPhone}</span>` : ''}
+      ${rawUrl   ? `<a href="${rawUrl}" target="_blank" style="font-size:11px;color:var(--blue);text-decoration:none;font-weight:600">🔗 공식 페이지 →</a>` : ''}
     </div>` : '');
 }
 
-// ???? ?類ㅼ읅 ?類ㅼ퐠 ?怨쀬뵠??(獄쏄퉮肉????곸뵠???怨멸쉭 癰귣떯由???덉삂) ??????????????????
+// ── 정적 정책 데이터 (백엔드 없이도 상세 보기 동작) ─────────
 const _STATIC_DETAIL = {
-  '筌????遺욧쉭-??뽯뻻-?諛명롳쭪???: {
+  '청년-월세-한시-특별지원': {
     policy_header: {
-      policy_name: '筌????遺욧쉭 ??뽯뻻 ?諛명롳쭪???,
+      policy_name: '청년 월세 한시 특별지원',
       eligibility_percent: 92,
       progress_color: 'green',
-      icon: '?猷?,
+      icon: '🏠',
     },
     issues: [
-      { icon: '?醫묓닔', html: '<strong>雅뚯눖??源낆쨯 ?袁⑹뿯 沃섎챷?욜뙴?</strong> ?袁⑹삺 椰꾧퀣竊쒙쭪? 雅뚯눖??源낆쨯???醫롪퍕 雅뚯눘??? ??깊뒄??? ??놁뱽 ????됰뮸??덈뼄. ??뺤첒 ??沅?????덉뵭 ?遺우뵥????????됰뮸??덈뼄.' },
-      { icon: '?諭?, html: '<strong>?袁?筌??④쑴鍮??沃섎챶??</strong> ?遺욧쉭 ?④쑴鍮?疫꿸퀗而????? ?④쑴鍮???癒?궚 獄??類ㅼ젟??깆쁽揶쎛 ?袁⑹뒄??몃빍??' },
+      { icon: '⚠️', html: '<strong>주민등록 전입 미완료:</strong> 현재 거주지 주민등록이 신청 주소와 일치하지 않을 수 있습니다. 서류 심사 시 탈락 요인이 될 수 있습니다.' },
+      { icon: '📋', html: '<strong>임대차 계약서 미비:</strong> 월세 계약 기간이 남은 계약서 원본 및 확정일자가 필요합니다.' },
     ],
     guides: [
-      { icon: '??, html: '<strong>1??ｍ? ?袁⑹뿯?醫됲??袁⑥┷??띾┛</strong> ??椰꾧퀣竊쒙쭪? 雅뚯눖???녠숲??獄쎻뫖揆??뤿연 ??雅뚯눘?쇗에??袁⑹뿯?醫됲х몴?筌욊쑵六??뤾쉭?? 筌ｌ꼶??疫꿸퀗而? ?諭?? },
-      { icon: '?諭?, html: '<strong>2??ｍ? ?袁?筌??④쑴鍮???類ㅼ뵥</strong> ???④쑴鍮??뽯퓠 ?類ㅼ젟??깆쁽 ?袁⑹삢??筌〓엨? ??덈뮉筌왖 ?類ㅼ뵥??랁? ??용뼄筌?雅뚯눖???녠숲 獄쎻뫖揆 ????덈뻻???醫롪퍕??뤾쉭??' },
-      { icon: '??', html: '<strong>3??ｍ? 癰귣벊?嚥≪뮇肉????ㅼ뵬???醫롪퍕</strong> ??????뺤첒 餓Β????<a href="https://bokjiro.go.kr" target="_blank" style="color:var(--blue)">bokjiro.go.kr</a>?癒?퐣 ?醫롪퍕??? ??뽱뀱??뤾쉭?? 30????沅?野껉퀗?든몴???щ궖獄쏆룇???덈뼄.' },
+      { icon: '✅', html: '<strong>1단계: 전입신고 완료하기</strong> — 거주지 주민센터를 방문하여 현 주소로 전입신고를 진행하세요. 처리 기간: 당일' },
+      { icon: '📎', html: '<strong>2단계: 임대차 계약서 확인</strong> — 계약서에 확정일자 도장이 찍혀 있는지 확인하고, 없다면 주민센터 방문 시 동시에 신청하세요.' },
+      { icon: '🚀', html: '<strong>3단계: 복지로에서 온라인 신청</strong> — 위 서류 준비 후 <a href="https://bokjiro.go.kr" target="_blank" style="color:var(--blue)">bokjiro.go.kr</a>에서 신청서를 제출하세요. 30일 이내 결과를 통보받습니다.' },
     ],
-    summary_stats: { benefit_label: '??240筌띾슣??, processing_period_label: '1揶쏆뮇??, issue_count: 2, source_label: '???쀩겫?' },
+    summary_stats: { benefit_label: '연 240만원', processing_period_label: '1개월', issue_count: 2, source_label: '국토부' },
   },
-  '?????곸뵬獄쏄퀣?燁삳?諭?: {
-    policy_header: { policy_name: '?????곸뵬獄쏄퀣?燁삳?諭?, eligibility_percent: 85, progress_color: 'green', icon: '?諭? },
+  '국민내일배움카드': {
+    policy_header: { policy_name: '국민내일배움카드', eligibility_percent: 85, progress_color: 'green', icon: '📚' },
     issues: [
-      { icon: '?醫묓닔', html: '<strong>??彛?????굣 疫꿸퀣? ?類ㅼ뵥 ?袁⑹뒄:</strong> ?????굣 5,000筌띾슣???λ뜃????疫꿸퀣毓???彛?癒?뮉 筌왖?????怨몃퓠????뽰뇚??몃빍??' },
-      { icon: '?諭?, html: '<strong>??덉졃 疫꿸퀗? ?醫뤾문 ?袁⑹뒄:</strong> 筌왖?類ｋ쭆 筌욊낯毓??덉졃疫꿸퀗??癒?퐣筌?燁삳?諭??????揶쎛?館鍮??덈뼄. ?????類ㅼ뵥 ???醫롪퍕??뤾쉭??' },
+      { icon: '⚠️', html: '<strong>재직자 소득 기준 확인 필요:</strong> 연 소득 5,000만원 초과 대기업 재직자는 지원 대상에서 제외됩니다.' },
+      { icon: '📋', html: '<strong>훈련 기관 선택 필요:</strong> 지정된 직업훈련기관에서만 카드 사용이 가능합니다. 사전 확인 후 신청하세요.' },
     ],
     guides: [
-      { icon: '??, html: '<strong>1??ｍ? ?⑥쥙??4 ???뜚揶쎛??/strong> ??<a href="https://www.work24.go.kr" target="_blank" style="color:var(--blue)">work24.go.kr</a>?癒?퐣 ???뜚揶쎛?????醫롪퍕 ??륁뵠筌왖嚥???猷??뤾쉭??' },
-      { icon: '?諭?, html: '<strong>2??ｍ? ??띿뺏 ??彛??⑥눘???醫뤾문</strong> ??筌욊낯毓??덉졃??苑?癒?퐣 ??띿뺏 ??彛???덉졃?⑥눘???沃섎챶??野꺜??뀀퉸?癒?쉭??' },
-      { icon: '??', html: '<strong>3??ｍ? 燁삳?諭??醫롪퍕 獄?獄쏆뮄??/strong> ???醫롪퍕 ?諭????燁삳?諭???롮죯繹먮슣? ??2雅????뒄??몃빍?? ????????癒?뮉 ?怨뺚봺????깆몵嚥?獄쏆뮄???몃빍??' },
+      { icon: '✅', html: '<strong>1단계: 고용24 회원가입</strong> — <a href="https://www.work24.go.kr" target="_blank" style="color:var(--blue)">work24.go.kr</a>에서 회원가입 후 신청 페이지로 이동하세요.' },
+      { icon: '📎', html: '<strong>2단계: 수강 희망 과정 선택</strong> — 직업훈련포털에서 수강 희망 훈련과정을 미리 검색해두세요.' },
+      { icon: '🚀', html: '<strong>3단계: 카드 신청 및 발급</strong> — 신청 승인 후 카드 수령까지 약 2주 소요됩니다. 국민은행 또는 우리은행으로 발급됩니다.' },
     ],
-    summary_stats: { benefit_label: '筌ㅼ뮆? 500筌띾슣??, processing_period_label: '2雅?, issue_count: 2, source_label: '?⑥쥙?쒒겫?' },
+    summary_stats: { benefit_label: '최대 500만원', processing_period_label: '2주', issue_count: 2, source_label: '고용부' },
   },
-  '筌????띯뫁毓?源껊궗???텕筌왖': {
-    policy_header: { policy_name: '筌???袁⑸튋?④쑴伊?, eligibility_percent: 78, progress_color: 'blue', icon: '?裕? },
+  '청년-취업성공패키지': {
+    policy_header: { policy_name: '청년도약계좌', eligibility_percent: 78, progress_color: 'blue', icon: '💼' },
     issues: [
-      { icon: '?醫묓닔', html: '<strong>???굣 疫꿸퀣? ??????袁⑹뒄:</strong> 揶쏆뮇????굣 6,000筌띾슣????꾨릭, 揶쎛?닌딅꺖??餓λ쵐??180% ??꾨릭 鈺곌퀗援??筌뤴뫀紐??겸뫗???곷튊 ??몃빍??' },
-      { icon: '?逾?, html: '<strong>5???醫? ??롊?</strong> 餓λ쵎猷???? ???類?疫꿸퀣肉ф묾?獄???쑨?????쀪문?????늾??몃빍?? ?觀由???뱀뿯 ?④쑵????롡뵲???袁⑹뒄??몃빍??' },
+      { icon: '⚠️', html: '<strong>소득 기준 재확인 필요:</strong> 개인소득 6,000만원 이하, 가구소득 중위 180% 이하 조건을 모두 충족해야 합니다.' },
+      { icon: '🔎', html: '<strong>5년 유지 의무:</strong> 중도 해지 시 정부기여금 및 비과세 혜택이 소멸됩니다. 장기 납입 계획 수립이 필요합니다.' },
     ],
     guides: [
-      { icon: '??, html: '<strong>1??ｍ? 揶쎛???癒?봄 ????筌ｋ똾寃?/strong> ?????굣 疫꿸퀣?(揶쏆뮇?ㅼ쮯揶쎛??筌뤴뫀紐?????륁뵠(筌?19~34?? 鈺곌퀗援????????類ㅼ뵥??뤾쉭??' },
-      { icon: '?諭?, html: '<strong>2??ｍ? ?????源녿퓠???醫롪퍕</strong> ???띯몿?????????夷?醫뤿립夷??롪돌夷?怨뺚봺 ?? ?源녿퓠????쑬?筌롫똻?앮에??醫롪퍕 揶쎛?館鍮??덈뼄.' },
-      { icon: '??', html: '<strong>3??ｍ? 筌띲끉??40~70筌띾슣????뱀뿯</strong> ????筌ㅼ뮆? 70筌띾슣????뱀뿯 ???類?疫꿸퀣肉ф묾?筌ㅼ뮆? 6%???곕떽?嚥?獄쏆룇??????됰뮸??덈뼄.' },
+      { icon: '✅', html: '<strong>1단계: 가입 자격 셀프 체크</strong> — 소득 기준(개인·가구 모두)과 나이(만 19~34세) 조건을 사전에 확인하세요.' },
+      { icon: '📎', html: '<strong>2단계: 은행 앱에서 신청</strong> — 취급 은행(국민·신한·하나·우리 등) 앱에서 비대면으로 신청 가능합니다.' },
+      { icon: '🚀', html: '<strong>3단계: 매월 40~70만원 납입</strong> — 월 최대 70만원 납입 시 정부기여금 최대 6%를 추가로 받을 수 있습니다.' },
     ],
-    summary_stats: { benefit_label: '筌ㅼ뮆? 5,000筌띾슣??, processing_period_label: '5??筌띾슡由?, issue_count: 2, source_label: '疫뀀뜆??? },
+    summary_stats: { benefit_label: '최대 5,000만원', processing_period_label: '5년 만기', issue_count: 2, source_label: '금융위' },
   },
-  '筌???筌띾뜆?у쳞?우뺏-筌왖?癒?텢??: {
-    policy_header: { policy_name: '筌???筌띾뜆?у쳞?우뺏 筌왖?癒?텢??, eligibility_percent: 74, progress_color: 'blue', icon: '?猷? },
+  '청년-마음건강-지원사업': {
+    policy_header: { policy_name: '청년 마음건강 지원사업', eligibility_percent: 74, progress_color: 'blue', icon: '🏥' },
     issues: [
-      { icon: '?醫묓닔', html: '<strong>筌왖????獄쏅뗄??㎗??⑤벀?????쀫립:</strong> 椰꾧퀣竊?筌왖??肉??怨뺤뵬 ??볥궗 揶쎛?館釉??怨룸뼖??獄?疫꿸퀗? ??? ??살キ??덈뼄. 鈺곌퀗由??醫롪퍕??亦낅슣???몃빍??' },
-      { icon: '?諭?, html: '<strong>??10????뺣즲:</strong> ???┛??50??疫꿸퀣???흭, ?遺용연 ???┛????쇱벉 ?怨뺣즲嚥???곸뜞??? ??녿뮸??덈뼄.' },
+      { icon: '⚠️', html: '<strong>지역별 바우처 공급량 제한:</strong> 거주 지역에 따라 제공 가능한 상담사 및 기관 수가 다릅니다. 조기 신청을 권장합니다.' },
+      { icon: '📌', html: '<strong>연 10회 한도:</strong> 회기당 50분 기준이며, 잔여 회기는 다음 연도로 이월되지 않습니다.' },
     ],
     guides: [
-      { icon: '??, html: '<strong>1??ｍ? 椰꾧퀣竊쒙쭪? 雅뚯눖???녠숲 獄쎻뫖揆 ?醫롪퍕</strong> ???醫딇뀋筌?筌왖筌???癰귣벊? ????癒?퓠野?筌???筌띾뜆?у쳞?우뺏 獄쏅뗄??㎗??醫롪퍕 ??뤾텢??獄쏆빜??紐꾩뒄.' },
-      { icon: '?諭?, html: '<strong>2??ｍ? ?怨룸뼖 疫꿸퀗? ?醫뤾문</strong> ???類ㅻ뻿椰꾨떯而?퉪????녠숲 ?癒?뮉 筌왖??沃섏눊而??怨룸뼖 疫꿸퀗? 餓??醫뤾문 揶쎛?館鍮??덈뼄.' },
-      { icon: '??', html: '<strong>3??ｍ? ?怨룸뼖 ??됰튋 獄???곸뒠</strong> ??獄쏅뗄??㎗?燁삳?諭???롮죯 ??筌왖??疫꿸퀗??癒?퐣 ?怨룸뼖 ??됰튋??筌욊쑵六??뤾쉭?? 癰귣챷?ㅹ겫???욱닊?? ???뼣 3,000?癒?뿯??덈뼄.' },
+      { icon: '✅', html: '<strong>1단계: 거주지 주민센터 방문 신청</strong> — 신분증 지참 후 복지 담당자에게 청년 마음건강 바우처 신청 의사를 밝히세요.' },
+      { icon: '📎', html: '<strong>2단계: 상담 기관 선택</strong> — 정신건강복지센터 또는 지정 민간 상담 기관 중 선택 가능합니다.' },
+      { icon: '🚀', html: '<strong>3단계: 상담 예약 및 이용</strong> — 바우처 카드 수령 후 지정 기관에서 상담 예약을 진행하세요. 본인부담금은 회당 3,000원입니다.' },
     ],
-    summary_stats: { benefit_label: '??80筌띾슣???怨룸뼣', processing_period_label: '?怨몃뻻', issue_count: 2, source_label: '癰귣벊??봔' },
+    summary_stats: { benefit_label: '연 80만원 상당', processing_period_label: '상시', issue_count: 2, source_label: '복지부' },
   },
-  '筌??덌㎕?뚮씜?????놃꺍': {
-    policy_header: { policy_name: '筌??덌㎕?뚮씜?????놃꺍', eligibility_percent: 41, progress_color: 'orange', icon: '??' },
+  '청년창업사관학교': {
+    policy_header: { policy_name: '청년창업사관학교', eligibility_percent: 41, progress_color: 'orange', icon: '🚀' },
     issues: [
-      { icon: '??, html: '<strong>??毓썸④쑵???餓Β??沃섎챸??</strong> ??뺤첒 ??沅?+ 獄쏆뮉紐???沅?2??ｍ롦에?筌욊쑵六??렽? ?닌딄퍥?怨몄뵥 筌띲끉???④쑵?룡???뽰삢 ?브쑴苑???袁⑸땾??낅빍??' },
-      { icon: '?醫묓닔', html: '<strong>筌≪럩毓??袁⑹뵠???닌딄퍥???봔鈺?</strong> ??λ떄 ?袁⑹뵠?遺용선 ??????袁⑤빒, MVP(筌ㅼ뮇??疫꿸퀡????쀫?) ?癒?뮉 ?袁⑥쨮?醫???놁뵠 ??됱뱽 野껋럩????룰봄?쒖쥙????苡??誘る툡筌욌쵎???' },
-      { icon: '?逾?, html: '<strong>野껋럩?녕몴??誘れ벉:</strong> ?怨뚯퍢 ?醫딆뻣 ?紐꾩뜚????쀫립??뤿선 ??됰선 ???뇧 野껋럩?녕몴醫롮뵠 5:1 ??곴맒??낅빍??' },
+      { icon: '❗', html: '<strong>사업계획서 준비 미흡:</strong> 서류 심사 + 발표 심사 2단계로 진행되며, 구체적인 매출 계획과 시장 분석이 필수입니다.' },
+      { icon: '⚠️', html: '<strong>창업 아이템 구체성 부족:</strong> 단순 아이디어 수준이 아닌, MVP(최소 기능 제품) 또는 프로토타입이 있을 경우 합격률이 크게 높아집니다.' },
+      { icon: '🔎', html: '<strong>경쟁률 높음:</strong> 연간 선발 인원이 제한되어 있어 평균 경쟁률이 5:1 이상입니다.' },
     ],
     guides: [
-      { icon: '??, html: '<strong>1??ｍ? 筌≪럩毓??袁⑹뵠???닌딄퍥??/strong> ???얜챷???類ㅼ벥 ???遺억펷????筌뤴뫚紐???뽰삢 ????륁뵡 筌뤴뫀????뽮퐣嚥???毓썸④쑵???뽰벥 ?됰뜄????臾믨쉐??뤾쉭??' },
-      { icon: '?諭?, html: '<strong>2??ｍ? K-????紐꾨씜 ??苑?癒?퐣 ?⑤벀???類ㅼ뵥</strong> ??<a href="https://www.k-startup.go.kr" target="_blank" style="color:var(--blue)">k-startup.go.kr</a>?癒?퐣 筌뤴뫁彛???깆젟??筌왖???癒?봄???類ㅼ뵥??뤾쉭??' },
-      { icon: '??', html: '<strong>3??ｍ? ??뺤첒夷뚳쭖?곸젔 餓Β??/strong> ???????筌≪럩毓쏙쭪袁れ뵊???얜?利??뚢뫁苑??筌≪럩毓??대Ŋ???袁⑥쨮域밸챶????獄쏆룇?앾쭖???룰봄?쒖쥙?????ゅ첎臾먮빍??' },
+      { icon: '✅', html: '<strong>1단계: 창업 아이템 구체화</strong> — 문제 정의 → 솔루션 → 목표 시장 → 수익 모델 순서로 사업계획서의 뼈대를 작성하세요.' },
+      { icon: '📎', html: '<strong>2단계: K-스타트업 포털에서 공고 확인</strong> — <a href="https://www.k-startup.go.kr" target="_blank" style="color:var(--blue)">k-startup.go.kr</a>에서 모집 일정과 지원 자격을 확인하세요.' },
+      { icon: '🚀', html: '<strong>3단계: 서류·면접 준비</strong> — 사전에 창업진흥원 무료 컨설팅(창업 교육 프로그램)을 받으면 합격률이 올라갑니다.' },
     ],
-    summary_stats: { benefit_label: '筌ㅼ뮆? 1???뜚', processing_period_label: '1??, issue_count: 3, source_label: '餓λ쵌由곈겫?' },
+    summary_stats: { benefit_label: '최대 1억원', processing_period_label: '1년', issue_count: 3, source_label: '중기부' },
   },
 };
 
-// ???? showDetail: 獄쏄퉮肉???怨멸쉭 API ??μ뵬 ???뮞 ?怨쀪퐨 ??嚥≪뮇類???媛?????????????????
+// ── showDetail: 백엔드 상세 API 단일 소스 우선 → 로컬 폴백 ────────
 async function showDetail(policyId) {
   const _onAnalysisPage = location.pathname === '/analysis';
   if (!_onAnalysisPage) {
-    // ??삘뀲 ??륁뵠筌왖?癒?퐣 ?紐꾪뀱: policyId ??????/analysis嚥???猷?    _cacheDetailCard(policyId, _findPortfolioCard(policyId));
+    // 다른 페이지에서 호출: policyId 저장 후 /analysis로 이동
     try { localStorage.setItem('benefic_detail_id', policyId); } catch(e) {}
     window.location.href = '/analysis';
-    return; // analysis ??륁뵠筌왖??load ?紐껊굶??? showDetail?????뉒빊?쀫맙
+    return; // analysis 페이지의 load 핸들러가 showDetail을 재호출함
   }
-  // analysis.html?癒?퐣 筌욊낯???紐꾪뀱??野껋럩?? ??猷???곸뵠 獄쏅뗀以????쐭筌?
+  // analysis.html에서 직접 호출된 경우: 이동 없이 바로 렌더링
 
-  // 1) 獄쏄퉮肉???怨멸쉭 API ?怨쀪퐨 (policy_id ??μ뵬 疫꿸퀣?)
+  // 1) 백엔드 상세 API 우선 (policy_id 단일 기준)
   const backendDetail = await _fetchDetailFromBackend(policyId);
   if (backendDetail) {
     renderDetail(backendDetail);
     return;
   }
 
-  // 2) AI ?브쑴苑???_currentPortfolio 筌?Ŋ??(?類μ넇??policy_id ??깊뒄筌???됱뒠)
-  const card = _findPortfolioCard(policyId) || _loadDetailCard(policyId);
+  // 2) AI 분석 후 _currentPortfolio 캐시 (정확한 policy_id 일치만 허용)
+  const card = _currentPortfolio.find(c => String(c.policy_id || '') === String(policyId || ''));
   if (card) {
-    renderDetail(_detailFromCachedCard(card, policyId));
+    const pct   = card.수급확률 || card.eligibility_percent || 60;
+    const css   = card._css || {};
+    const color = css.progress_color || (pct>=80?'green':pct>=60?'blue':'orange');
+    renderDetail({
+      policy_header: {
+        policy_name:         card.서비스명 || card.policy_name || policyId,
+        eligibility_percent: pct,
+        progress_color:      color,
+        icon:                card.icon || '📋',
+        percent_class:       css.percent_class || 'mid',
+        badge_label:         css.badge_label || '',
+        badge_class:         css.badge_class || 'badge-blue',
+        subtitle:            card.subtitle || '',
+      },
+      개인요약: card.개인요약 || card.personal_summary || '',
+      원문발췌: {
+        지원대상: card.지원대상 || card.description || card.subtitle || '',
+        지원내용: card.지원내용 || card.benefit_summary || card.benefit_label || '',
+        신청방법: card.신청방법 || '',
+        전화문의: card.전화문의 || '',
+        상세조회url: card.상세조회url || card.application_url || '',
+      },
+      issues: (card.탈락사유 !== undefined ? card.탈락사유 : null) || card.issues || _buildIssuesFromDB(),
+      guides: card.해결방법 || card.guides || _buildGuidesFromDB(),
+      summary_stats: {
+        benefit_label:           card.benefit_label || '-',
+        processing_period_label: '1~2개월',
+        issue_count:             (card.탈락사유||[]).length || 1,
+        source_label:            card.source_label || 'Gov24',
+      },
+    });
     return;
   }
 
-  // 3) _STATIC_DETAIL????됱몵筌?????
+  // 3) _STATIC_DETAIL에 있으면 사용
   if (_STATIC_DETAIL[policyId]) {
     renderDetail(_STATIC_DETAIL[policyId]);
     return;
   }
 
-  // 4) ?癒??筌ㅼ뮇???紐껊쑔????媛?  const excerptFallback = await _detailFromExcerptFallback(policyId);
-  if (excerptFallback) {
-    renderDetail(excerptFallback);
-    return;
-  }
-
-  // 5) 筌ㅼ뮇???類ㅼ읅 ??媛?  renderDetail(_buildDetailFromDB(policyId));
+  // 4) 최소 정적 폴백
+  renderDetail(_buildDetailFromDB(policyId));
 }
 
-// ?怨멸쉭 API ??쎈솭 ??筌ㅼ뮇????덇땀??issue-item ??밴쉐
+// 상세 API 실패 시 최소 안내용 issue-item 생성
 function _buildIssuesFromDB() {
-  return [{ icon:'?諭꾪닔', html:'<strong>?怨멸쉭 ?怨쀬뵠???類ㅼ뵥 ?袁⑹뒄:</strong> ??쎈뱜??곌쾿 ?癒?뮉 ??뺤쒔 筌왖?怨쀬몵嚥??怨멸쉭 ?癒????븍뜄???? 筌륁궢六??щ빍??' }];
+  return [{ icon:'ℹ️', html:'<strong>상세 데이터 확인 필요:</strong> 네트워크 또는 서버 지연으로 상세 원문을 불러오지 못했습니다.' }];
 }
 
-// ?怨멸쉭 API ??쎈솭 ??筌ㅼ뮇????덇땀??guide-item ??밴쉐
+// 상세 API 실패 시 최소 안내용 guide-item 생성
 function _buildGuidesFromDB() {
   return [
-    { icon:'??, html:'<strong>1??ｍ? AI ?브쑴苑???쎈뻬</strong> ???怨룸뼊 "??랁닋 揶쎛?關苑?AI ?브쑴苑???뽰삂??띾┛" 甕곌쑵????袁ⓥ뀮?紐꾩뒄.' },
-    { icon:'?遊?, html:'<strong>2??ｍ? ?怨멸쉭 ??덉쨮?⑥쥙臾?/strong> ???醫롫뻻 ????덉뵬 ?類ㅼ퐠???怨멸쉭癰귣떯由곁몴???쇰뻻 ??곷선雅뚯눘苑??' },
-    { icon:'?逾?, html:'<strong>3??ｍ? ?⑤벊???醫롪퍕 ??륁뵠筌왖 ?類ㅼ뵥</strong> ??<a href="https://www.bokjiro.go.kr" target="_blank" style="color:var(--blue)">bokjiro.go.kr</a>?癒?퐣 筌ㅼ뮇???⑤벀?х몴??類ㅼ뵥??뤾쉭??' },
+    { icon:'✅', html:'<strong>1단계: AI 분석 실행</strong> — 상단 "수급 가능성 AI 분석 시작하기" 버튼을 누르세요.' },
+    { icon:'🔄', html:'<strong>2단계: 상세 새로고침</strong> — 잠시 후 동일 정책의 상세보기를 다시 열어주세요.' },
+    { icon:'🔗', html:'<strong>3단계: 공식 신청 페이지 확인</strong> — <a href="https://www.bokjiro.go.kr" target="_blank" style="color:var(--blue)">bokjiro.go.kr</a>에서 최신 공고를 확인하세요.' },
   ];
 }
 
-// ?怨멸쉭 API ??쎈솭 ??筌ㅼ뮇????덉삂 癰귣똻???detailData ??밴쉐
+// 상세 API 실패 시 최소 동작 보장용 detailData 생성
 function _buildDetailFromDB(policyId) {
-  const policyName = String(policyId || '?類ㅼ퐠 ?怨멸쉭');
+  const policyName = String(policyId || '정책 상세');
   return {
-    policy_header: { policy_name: policyName, eligibility_percent: 60, progress_color: 'blue', icon: '?諭?,
-      percent_class: 'mid', badge_label: '???類ㅼ뵥 ?袁⑹뒄', badge_class: 'badge-blue',
-      subtitle: '?怨멸쉭 ?怨쀬뵠???類ㅼ뵥 ?袁⑹뒄' },
+    policy_header: { policy_name: policyName, eligibility_percent: 60, progress_color: 'blue', icon: '📋',
+      percent_class: 'mid', badge_label: '⚡ 확인 필요', badge_class: 'badge-blue',
+      subtitle: '상세 데이터 확인 필요' },
     issues:  _buildIssuesFromDB(),
     guides:  _buildGuidesFromDB(),
-    summary_stats: { benefit_label: '-', processing_period_label: '1~2揶쏆뮇??, issue_count: 1, source_label: 'BenePick' },
+    summary_stats: { benefit_label: '-', processing_period_label: '1~2개월', issue_count: 1, source_label: 'BenePick' },
   };
 }
 
@@ -1406,7 +1182,7 @@ function _makeFallbackDetail(policyId) {
   return _buildDetailFromDB(policyId);
 }
 
-// ???? ?????????遺얇늺 ???쐭筌?????????????????????????????????????????????????????????????????????????
+// ── 포트폴리오 화면 렌더링 ────────────────────────────────────
 async function loadPortfolio() {
   _renderPortfolioStatic();
 }
@@ -1414,29 +1190,29 @@ async function loadPortfolio() {
 function _renderPortfolioData(data) {
   const hero = data.portfolio_hero;
 
-  // hero ????묒굺??
+  // hero 총 수혜액
   const bigNum = document.querySelector('.portfolio-hero .big-num');
   if (bigNum) bigNum.textContent = hero.total_expected_benefit_label;
 
-  // hero ??살구 p ??볥젃 (??甕곕뜆??p)
+  // hero 설명 p 태그 (두 번째 p)
   const heroPs = document.querySelectorAll('.portfolio-hero p');
   if (heroPs.length >= 2) heroPs[1].textContent = hero.portfolio_basis_label;
   else if (heroPs.length === 1) heroPs[0].textContent = hero.portfolio_basis_label;
 
-  // hero 獄쏄퀣?: 筌앸맩???醫롪퍕 N椰?/ 鈺곌퀗援?癰귣똻????M椰?
+  // hero 배지: 즉시 신청 N건 / 조건 보완 후 M건
   const heroBadges = document.querySelectorAll('.portfolio-hero span');
   if (heroBadges.length >= 2) {
-    heroBadges[0].textContent = `??筌앸맩???醫롪퍕 揶쎛??${hero.ready_count}椰?;
-    heroBadges[1].textContent = `??鈺곌퀗援?癰귣똻????${hero.conditional_count}椰?;
+    heroBadges[0].textContent = `✅ 즉시 신청 가능 ${hero.ready_count}건`;
+    heroBadges[1].textContent = `⚡ 조건 보완 후 ${hero.conditional_count}건`;
   }
 
-  // port-grid 燁삳?諭????쐭筌?
+  // port-grid 카드 렌더링
   const portGrid = document.querySelector('.port-grid');
   if (portGrid) {
     const statusBadge = s =>
-      s === 'ready'       ? '<span class="badge badge-green">筌앸맩???醫롪퍕</span>' :
-      s === 'conditional' ? '<span class="badge badge-blue">鈺곌퀗援??類ㅼ뵥 ?袁⑹뒄</span>' :
-                            '<span class="badge badge-orange">鈺곌퀗援??봔鈺?/span>';
+      s === 'ready'       ? '<span class="badge badge-green">즉시 신청</span>' :
+      s === 'conditional' ? '<span class="badge badge-blue">조건 확인 필요</span>' :
+                            '<span class="badge badge-orange">조건 부족</span>';
 
     const cards = data.portfolio_items.map(item => `
       <div class="port-grid-card" onclick="showDetail('${item.policy_id}')" style="cursor:pointer;">
@@ -1447,41 +1223,41 @@ function _renderPortfolioData(data) {
         <div style="margin-top:10px;">${statusBadge(item.status)}</div>
       </div>`).join('');
 
-    // 筌띾뜆?筌띾맩肉?"?類ㅼ퐠 ???곕떽???띾┛" 燁삳?諭??醫?
+    // 마지막에 "정책 더 추가하기" 카드 유지
     portGrid.innerHTML = cards + `
       <div class="port-grid-card" style="background:var(--gray-50);border-style:dashed;cursor:pointer;" onclick="showTab('dashboard')">
-        <div class="icon">??/div>
-        <h4 style="color:var(--gray-500);">?類ㅼ퐠 ??癰귣떯由?/h4>
-        <div class="amount" style="color:var(--gray-300);font-size:14px">????뺣궖??뺤쨮 ??猷?/div>
-        <div class="period" style="color:var(--gray-400)">?袁⑷퍥 筌뤴뫖以??類ㅼ뵥</div>
+        <div class="icon">➕</div>
+        <h4 style="color:var(--gray-500);">정책 더 보기</h4>
+        <div class="amount" style="color:var(--gray-300);font-size:14px">대시보드로 이동</div>
+        <div class="period" style="color:var(--gray-400)">전체 목록 확인</div>
       </div>`;
   }
 
-  // CTA ?諭??
+  // CTA 섹션
   const ctaH3 = document.querySelector('.cta-text h3');
   const ctaP  = document.querySelector('.cta-text p');
   if (ctaH3) ctaH3.textContent = data.portfolio_cta.headline;
   if (ctaP)  ctaP.textContent  = data.portfolio_cta.description;
 }
 
-// 獄쏄퉮肉????곸뱽 ????롫굡?꾨뗀逾??類ㅼ읅 ?遺얇늺 ?醫? (疫꿸퀣??HTML 域밸챶?嚥?
+// 백엔드 없을 때 하드코딩 정적 화면 유지 (기존 HTML 그대로)
 function _renderPortfolioStatic() {
-  // runAnalysis ??_currentPortfolio 筌?Ŋ?녶첎? ??됱몵筌?域밸㈇援ф에????쐭筌?
+  // runAnalysis 후 _currentPortfolio 캐시가 있으면 그걸로 렌더링
   if (_currentPortfolio && _currentPortfolio.length > 0) {
     const statusBadge = s =>
-      s === 'ready'       ? '<span class="badge badge-green">筌앸맩???醫롪퍕</span>' :
-      s === 'conditional' ? '<span class="badge badge-blue">鈺곌퀗援??類ㅼ뵥 ?袁⑹뒄</span>' :
-                            '<span class="badge badge-orange">鈺곌퀗援??봔鈺?/span>';
+      s === 'ready'       ? '<span class="badge badge-green">즉시 신청</span>' :
+      s === 'conditional' ? '<span class="badge badge-blue">조건 확인 필요</span>' :
+                            '<span class="badge badge-orange">조건 부족</span>';
 
     const portGrid = document.querySelector('.port-grid');
     if (portGrid) {
       const cards = _currentPortfolio.map(card => {
-        const score  = card.??랁닋?類ｌぇ || card.eligibility_percent || 0;
-        const name   = card.??뺥돩??살구 || card.policy_name || '';
+        const score  = card.수급확률 || card.eligibility_percent || 0;
+        const name   = card.서비스명 || card.policy_name || '';
         const status = score >= 80 ? 'ready' : score >= 60 ? 'conditional' : 'blocked';
         return `
           <div class="port-grid-card" onclick="showDetail('${card.policy_id}')" style="cursor:pointer;">
-            <div class="icon">${card.icon || '?諭?}</div>
+            <div class="icon">${card.icon || '📋'}</div>
             <h4>${escHtml(name)}</h4>
             <div class="amount">${escHtml(card.benefit_label || '-')}</div>
             <div class="period">${escHtml(card.subtitle || '-')}</div>
@@ -1490,17 +1266,17 @@ function _renderPortfolioStatic() {
       }).join('');
       portGrid.innerHTML = cards + `
         <div class="port-grid-card" style="background:var(--gray-50);border-style:dashed;cursor:pointer;" onclick="showTab('dashboard')">
-          <div class="icon">??/div>
-          <h4 style="color:var(--gray-500);">?類ㅼ퐠 ??癰귣떯由?/h4>
-          <div class="amount" style="color:var(--gray-300);font-size:14px">????뺣궖??뺤쨮 ??猷?/div>
-          <div class="period" style="color:var(--gray-400)">?袁⑷퍥 筌뤴뫖以??類ㅼ뵥</div>
+          <div class="icon">➕</div>
+          <h4 style="color:var(--gray-500);">정책 더 보기</h4>
+          <div class="amount" style="color:var(--gray-300);font-size:14px">대시보드로 이동</div>
+          <div class="period" style="color:var(--gray-400)">전체 목록 확인</div>
         </div>`;
     }
   }
-  // ?類ㅼ읅 HTML 燁삳?諭??域밸챶?嚥??癒???袁ⓓ℡칰猿딅즲 ????
+  // 정적 HTML 카드는 그대로 두고 아무것도 안 함
 }
 
-// ???? runAnalysis: API ?紐꾪뀱嚥??대Ŋ猿???????????????????????????????????????????????????????????
+// ── runAnalysis: API 호출로 교체 ─────────────────────────────
 async function runAnalysis() {
   const overlay = document.getElementById('aiLoading');
   overlay.classList.add('show');
@@ -1513,30 +1289,35 @@ async function runAnalysis() {
     });
 
     _currentQueryId  = data.query_id;
-    // FastAPI: data.cards / ??媛? data.dashboard_data.recommendation_cards
+    // FastAPI: data.cards / 폴백: data.dashboard_data.recommendation_cards
     const rawCards = data.cards || data.dashboard_data?.recommendation_cards || [];
 
-    // policy_id??獄쏄퉮肉???癒?궚???醫???랁??怨멸쉭 API ??,
-    // ?袁⑥뵭??野껋럩??癒?춸 ??뺥돩??살구 ????뉩紐? ??筌???살쨮 ?????뺣뼄.
+    // policy_id는 백엔드 원본을 유지하고(상세 API 키),
+    // 누락된 경우에만 서비스명 슬러그를 대체 키로 사용한다.
     _currentPortfolio = rawCards.map(card => {
-      const name = card.??뺥돩??살구 || card.policy_name || '';
-      const slug = name.replace(/[^\w揶쎛-??/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase();
-      if (!card._css) card._css = _scoreToCSS(card.??랁닋?類ｌぇ || card.eligibility_percent || 60);
+      const name = card.서비스명 || card.policy_name || '';
+      const slug = name.replace(/[^\w가-힣]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase();
+      if (!card._css) card._css = _scoreToCSS(card.수급확률 || card.eligibility_percent || 60);
       return { ...card, policy_id: card.policy_id || slug };
     });
-    _savePortfolio(_currentPortfolio); // ??륁뵠筌왖 ??猷??袁⑸퓠???醫?
+    _savePortfolio(_currentPortfolio); // 페이지 이동 후에도 유지
 
-    // ???쐭筌띻낮猷?筌?Ŋ??? ??덉뵬??id ?紐낅뱜????????怨멸쉭 ??????筌띲끉臾??븍뜆?ょ㎉?? 獄쎻뫗???뺣뼄.
+    // 렌더링도 캐시와 동일한 id 세트를 사용해 상세 클릭 시 매칭 불일치를 방지한다.
     const dashboardData = data.dashboard_data || {};
     dashboardData.recommendation_cards = _currentPortfolio;
     renderDashboard(dashboardData);
 
-    animateProgressBars(document.querySelector('.policy-list') || document, 80);
+    // 진행바 재애니메이션
+    document.querySelectorAll('.progress-fill').forEach(bar => {
+      const w = bar.style.width;
+      bar.style.width = '0';
+      setTimeout(() => { bar.style.width = w; }, 100);
+    });
 
-    showToast('?브쑴苑???袁⑥┷??뤿???щ빍?? ??, 'success');
+    showToast('분석이 완료되었습니다! ✅', 'success');
 
   } catch (e) {
-    showToast('?브쑴苑???쎈솭: ' + e.message);
+    showToast('분석 실패: ' + e.message);
     console.error('runAnalysis error:', e);
   } finally {
     overlay.classList.remove('show');
@@ -1548,12 +1329,12 @@ async function runAnalysis() {
 function toggleCheck(el) {
   el.classList.toggle('done');
   const box = el.querySelector('.check-box');
-  box.textContent = el.classList.contains('done') ? '?? : '';
+  box.textContent = el.classList.contains('done') ? '✓' : '';
 }
 
-// ?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름
-// 野꺜??筌뤴뫀諭???DB ?怨뺣짗 甕곌쑴??
-// ?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름
+// ══════════════════════════════════════════════════════════════
+// 검색 모듈 — DB 연동 버전
+// ══════════════════════════════════════════════════════════════
 
 let _searchLoading     = false;
 let _dashSearchLoading = false;
@@ -1568,7 +1349,7 @@ function initSearch() {
   const qw = document.getElementById('quick-tags');
   if (qw && !qw.dataset.init) {
     qw.dataset.init = '1';
-    ['筌????遺욧쉭','疫꿸퀣???븐넞','??쇰씜疫뀀맩肉?,'?????곸뵬獄쏄퀣?燁삳?諭?,'?紐꾩뵥 ??깆쁽??,'?袁⑤짗??롫뼣','?關釉??筌왖??,'???筌?揶쎛鈺?].forEach(t => {
+    ['청년 월세','기초생활','실업급여','국민내일배움카드','노인 일자리','아동수당','장애인 지원','한부모 가족'].forEach(t => {
       const b = document.createElement('button');
       b.textContent = t;
       b.style.cssText = 'background:var(--gray-100);border:none;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;color:var(--gray-700);cursor:pointer;font-family:inherit;transition:all .15s';
@@ -1579,7 +1360,7 @@ function initSearch() {
     });
   }
 
-  // ????뺣궖??뽯퓠??野꺜??깅선????띻볼獄쏆룇? 野껋럩???癒?짗 ??쎈뻬
+  // 대시보드에서 검색어를 넘겨받은 경우 자동 실행
   try {
     const pending = sessionStorage.getItem('benefic_search_query');
     if (pending) {
@@ -1605,7 +1386,7 @@ async function loadBrowse(page = 1) {
   const badge = document.getElementById('browse-total-badge');
   if (!wrap || !list) return;
   wrap.style.display = 'block';
-  list.innerHTML = _loadingHTML('?類ㅼ퐠 筌뤴뫖以???븍뜄???삳뮉 餓?..');
+  list.innerHTML = _loadingHTML('정책 목록을 불러오는 중...');
   try {
     const useBackend = await _checkBackend();
     let results = [], total = 0, totalPages = 1;
@@ -1616,11 +1397,11 @@ async function loadBrowse(page = 1) {
       total = POLICY_DB.length; totalPages = Math.ceil(total/_perPage);
       results = POLICY_DB.slice((page-1)*_perPage, page*_perPage);
     }
-    if (badge) badge.textContent = `(??${total.toLocaleString()}椰?`;
-    list.innerHTML = results.length ? results.map(_renderPolicyCard).join('') : _emptyHTML('?類ㅼ퐠????곷뮸??덈뼄.');
+    if (badge) badge.textContent = `(총 ${total.toLocaleString()}건)`;
+    list.innerHTML = results.length ? results.map(_renderPolicyCard).join('') : _emptyHTML('정책이 없습니다.');
     if (pag) pag.innerHTML = _paginationHTML(page, totalPages, 'loadBrowse');
   } catch(e) {
-    list.innerHTML = _errorHTML('筌뤴뫖以?嚥≪뮆諭???쎈솭: ' + e.message);
+    list.innerHTML = _errorHTML('목록 로드 실패: ' + e.message);
   }
 }
 
@@ -1636,43 +1417,43 @@ async function doSearch(page = 1) {
   }
   _searchLoading = true;
   document.getElementById('search-browse-wrap').style.display = 'none';
-  document.getElementById('search-status').textContent = '野꺜??餓λ쵃??;
-  document.getElementById('search-results').innerHTML  = _loadingHTML('DB?癒?퐣 野꺜??餓?..');
+  document.getElementById('search-status').textContent = '검색 중…';
+  document.getElementById('search-results').innerHTML  = _loadingHTML('DB에서 검색 중...');
   document.getElementById('search-pagination').style.display = 'none';
 
   const isNatural = (q.length >= 10 && /\s/.test(q)) ||
-                    /??좊선|??랁???獄쏆룄?????젻|筌≪뼚釉??몃Þ?|??堉???逾??.test(q);
+                    /싶어|하고 싶|받고|알려|찾아|뭐가|어떤|어디서/.test(q);
   try {
     let results = [], statusMsg = '', total = 0, totalPages = 1;
     const useBackend = await _checkBackend();
     if (isNatural) {
-      document.getElementById('search-status').textContent = '?夷?AI ?브쑴苑?餓λ쵃??;
+      document.getElementById('search-status').textContent = '🤖 AI 분석 중…';
       let all = useBackend
         ? (await apiFetch('/search/natural?' + new URLSearchParams({q, top_k:100}))).results||[]
         : await localNaturalSearch(q, 100);
       total = all.length; totalPages = Math.ceil(total/_perPage)||1;
       results = all.slice((page-1)*_perPage, page*_perPage);
-      statusMsg = `?夷?AI 野꺜??野껉퀗??${total}椰?;
+      statusMsg = `🤖 AI 검색 결과 ${total}건`;
     } else {
       if (useBackend) {
         const p = new URLSearchParams({keyword:q, limit:String(_perPage), offset:String((page-1)*_perPage)});
         const data = await apiFetch('/search/keyword?'+p.toString());
         results = data.results||[]; total = data.count||results.length;
-        totalPages = Math.ceil(total/_perPage)||1; statusMsg = `DB 野꺜??野껉퀗??${total}椰?;
+        totalPages = Math.ceil(total/_perPage)||1; statusMsg = `DB 검색 결과 ${total}건`;
       } else {
         const all = localKeywordSearch(q,'','',500);
         total = all.length; totalPages = Math.ceil(total/_perPage)||1;
-        results = all.slice((page-1)*_perPage, page*_perPage); statusMsg = `野꺜??野껉퀗??${total}椰?;
+        results = all.slice((page-1)*_perPage, page*_perPage); statusMsg = `검색 결과 ${total}건`;
       }
       if (results.length < 5 && page === 1) {
-        document.getElementById('search-status').textContent = '?夷?AI 癰귣똻??野꺜??餓λ쵃??;
+        document.getElementById('search-status').textContent = '🤖 AI 보완 검색 중…';
         const extras = useBackend
           ? (await apiFetch('/search/natural?'+new URLSearchParams({q,top_k:20}))).results||[]
           : await localNaturalSearch(q, 20);
-        const names = new Set(results.map(r=>r['??뺥돩??살구']||r.??뺥돩??살구));
-        results = [...results, ...extras.filter(r=>!names.has(r['??뺥돩??살구']||r.??뺥돩??살구))];
+        const names = new Set(results.map(r=>r['서비스명']||r.서비스명));
+        results = [...results, ...extras.filter(r=>!names.has(r['서비스명']||r.서비스명))];
         total = results.length; totalPages = 1;
-        statusMsg = `野꺜??野껉퀗??${total}椰?(AI 癰귣똻????釉?`;
+        statusMsg = `검색 결과 ${total}건 (AI 보완 포함)`;
       }
     }
     document.getElementById('search-status').textContent = statusMsg;
@@ -1680,7 +1461,7 @@ async function doSearch(page = 1) {
     const pag = document.getElementById('search-pagination');
     if (pag && totalPages > 1) { pag.style.display='block'; pag.innerHTML=_paginationHTML(page,totalPages,'doSearch'); }
   } catch(e) {
-    showToast('野꺜????살첒: ' + e.message);
+    showToast('검색 오류: ' + e.message);
     document.getElementById('search-status').textContent = '';
     document.getElementById('search-results').innerHTML = _errorHTML(e.message);
   } finally { _searchLoading = false; }
@@ -1688,58 +1469,58 @@ async function doSearch(page = 1) {
 
 async function doDashSearch() {
   const q = (document.getElementById('dash-search-input')?.value || '').trim();
-  if (!q) { showToast('野꺜??깅선????낆젾??뤾쉭??'); return; }
+  if (!q) { showToast('검색어를 입력하세요.'); return; }
 
-  // 野꺜??깅선??sessionStorage?????館釉???search.html嚥???猷?
-  // (??륁뵠筌왖 ??猷???main.js揶쎛 ?????곕┷筌롫똻苑??袁⑥삋 initSearch()揶쎛 ??? 揶쏅Ŋ????癒?짗 野꺜??
+  // 검색어를 sessionStorage에 저장한 뒤 search.html로 이동
+  // (페이지 이동 후 main.js가 재실행되면서 아래 initSearch()가 이를 감지해 자동 검색)
   try { sessionStorage.setItem('benefic_search_query', q); } catch(e) {}
   window.location.href = '/search';
 }
 
 function _renderPolicyCard(p) {
-  const name    = escHtml(p['??뺥돩??살구']    ||p.??뺥돩??살구    ||'-');
-  const field   = escHtml(p['??뺥돩??삵뀋??]  ||p.??뺥돩??삵뀋?? ||'');
-  const stype   = escHtml(p['筌왖?癒????]    ||p.筌왖?癒????   ||'');
-  const org     = escHtml((p['???疫꿸퀗?筌?] ||p.???疫꿸퀗?筌? ||'Gov24').substring(0,14));
-  const ddline  = escHtml(p['?醫롪퍕疫꿸퀬釉?]    ||p.?醫롪퍕疫꿸퀬釉?   ||'');
-  const target  = p['筌왖?癒???]    ||p.筌왖?癒???   ||'';
-  const content = p['筌왖?癒?땀??]    ||p.筌왖?癒?땀??   ||'';
-  const tel     = escHtml(p['?袁れ넅?얜챷??]    ||p.?袁れ넅?얜챷??   ||'');
-  const url     = escHtml(p['?怨멸쉭鈺곌퀬?턷rl'] ||p.?怨멸쉭鈺곌퀬?턷rl  ||'');
+  const name    = escHtml(p['서비스명']    ||p.서비스명    ||'-');
+  const field   = escHtml(p['서비스분야']  ||p.서비스분야  ||'');
+  const stype   = escHtml(p['지원유형']    ||p.지원유형    ||'');
+  const org     = escHtml((p['소관기관명'] ||p.소관기관명  ||'Gov24').substring(0,14));
+  const ddline  = escHtml(p['신청기한']    ||p.신청기한    ||'');
+  const target  = p['지원대상']    ||p.지원대상    ||'';
+  const content = p['지원내용']    ||p.지원내용    ||'';
+  const tel     = escHtml(p['전화문의']    ||p.전화문의    ||'');
+  const url     = escHtml(p['상세조회url'] ||p.상세조회url  ||'');
   const scorePct = p.score!==undefined ? Math.round(p.score*100) : null;
-  const iconMap  = {'?袁㏉닊':'?裕?,'??곸뒠亦?:'???,'??뺥돩??:'??쎿닼?,'雅뚯눊援?:'?猷?,'?⑥쥙??:'?裕?,'?대Ŋ??:'???,'??롮┷':'?猷?,'?紐꾩뵥':'?維?,'?關釉??:'??,'揶쎛鈺?:'?維??낆쐣?굿?낆쐣?,'疫꿸퀣???븐넞':'??녔닼?,'疫뀀뜆??:'?猷?,'筌≪럩毓?:'??','癰귣떯援?:'?萸?};
-  const icon = iconMap[stype]||iconMap[field]||'?諭?;
-  const policyKey = p.policy_id || p['policy_id'] || (p['??뺥돩??살구']||p.??뺥돩??살구||'').replace(/\s+/g,'-');
+  const iconMap  = {'현금':'💰','이용권':'🎫','서비스':'🛎️','주거':'🏠','고용':'💼','교육':'🎓','의료':'🏥','노인':'👴','장애인':'♿','가족':'👨‍👩‍👧','기초생활':'🛡️','금융':'🏦','창업':'🚀','보건':'💊'};
+  const icon = iconMap[stype]||iconMap[field]||'📋';
+  const policyKey = p.policy_id || p['policy_id'] || (p['서비스명']||p.서비스명||'').replace(/\s+/g,'-');
   const isScrapped = _isScrapped(policyKey);
   return `<div class="policy-card-wrap" style="position:relative;margin-bottom:12px">
     <div class="policy-card mid" onclick="goToPolicyDetailPage('${policyKey}')" style="cursor:pointer">
-      <!-- ??scrap-btn?? .policy-card 筌욊낫???癒?뻼??곗쨮 獄쏄퀣??(position:absolute 疫꿸퀣? 癰귣똻?? -->
+      <!-- ✅ scrap-btn은 .policy-card 직계 자식으로 배치 (position:absolute 기준 보장) -->
       <button
         class="scrap-btn ${isScrapped ? 'active' : ''}"
         data-policy-id="${policyKey}"
         onclick="event.stopPropagation(); toggleScrap('${policyKey}', this)"
-        title="${isScrapped ? '??쎄쾿????곸젫' : '??쎄쾿??????}"
-        aria-label="${isScrapped ? '??쎄쾿????곸젫' : '??쎄쾿??????}"
-      >${isScrapped ? '?? : '??}</button>
+        title="${isScrapped ? '스크랩 해제' : '스크랩 저장'}"
+        aria-label="${isScrapped ? '스크랩 해제' : '스크랩 저장'}"
+      >${isScrapped ? '★' : '☆'}</button>
       <div class="policy-top-row">
         <div class="policy-left" style="padding-right:40px">
           <div class="policy-icon blue">${icon}</div>
           <div class="policy-meta">
             <h4>${name}</h4>
-            <p>${field}${field&&stype?' 夷?':''}${stype}</p>
+            <p>${field}${field&&stype?' · ':''}${stype}</p>
             <div class="policy-badges">
               <span class="badge badge-blue">${org}</span>
-              ${ddline?`<span class="badge badge-gray">疫꿸퀬釉? ${ddline}</span>`:''}
-              ${scorePct!==null?`<span class="badge badge-green">?醫롪텢??${scorePct}%</span>`:''}
+              ${ddline?`<span class="badge badge-gray">기한: ${ddline}</span>`:''}
+              ${scorePct!==null?`<span class="badge badge-green">유사도 ${scorePct}%</span>`:''}
             </div>
           </div>
         </div>
       </div>
-      ${target?`<p style="font-size:12px;color:var(--gray-500);margin-top:10px;padding-top:10px;border-top:1px solid var(--gray-100);line-height:1.6">${escHtml(target.substring(0,140))}${target.length>140?'??:''}</p>`:''}
-      ${content?`<p style="font-size:12px;color:var(--blue);margin-top:6px;font-weight:600">?裕?${escHtml(content.substring(0,100))}${content.length>100?'??:''}</p>`:''}
+      ${target?`<p style="font-size:12px;color:var(--gray-500);margin-top:10px;padding-top:10px;border-top:1px solid var(--gray-100);line-height:1.6">${escHtml(target.substring(0,140))}${target.length>140?'…':''}</p>`:''}
+      ${content?`<p style="font-size:12px;color:var(--blue);margin-top:6px;font-weight:600">💰 ${escHtml(content.substring(0,100))}${content.length>100?'…':''}</p>`:''}
       <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-        ${tel?`<span style="font-size:11px;color:var(--gray-500)">?諭?${tel}</span>`:''}
-        ${url?`<a href="${url}" target="_blank" style="font-size:11px;color:var(--blue);text-decoration:none;font-weight:600;margin-left:auto">?逾??怨멸쉭 癰귣떯由???/a>`:''}
+        ${tel?`<span style="font-size:11px;color:var(--gray-500)">📞 ${tel}</span>`:''}
+        ${url?`<a href="${url}" target="_blank" style="font-size:11px;color:var(--blue);text-decoration:none;font-weight:600;margin-left:auto">🔗 상세 보기 →</a>`:''}
       </div>
     </div>
   </div>`;
@@ -1752,21 +1533,21 @@ function goToPolicyDetailPage(policyKey) {
 
 function renderSearchResults(results) {
   const el = document.getElementById('search-results');
-  if (!results||!results.length) { el.innerHTML=_emptyHTML('野꺜??野껉퀗?드첎? ??곷뮸??덈뼄'); return; }
+  if (!results||!results.length) { el.innerHTML=_emptyHTML('검색 결과가 없습니다'); return; }
   el.innerHTML = results.map(_renderPolicyCard).join('');
 }
 
-function _loadingHTML(msg){return`<div style="text-align:center;padding:40px 20px;color:var(--gray-500)"><div style="font-size:28px;margin-bottom:10px">??/div><p style="font-size:14px;font-weight:600">${msg}</p></div>`;}
-function _emptyHTML(msg){return`<div style="text-align:center;padding:60px 20px;color:var(--gray-500)"><div style="font-size:40px;margin-bottom:12px">?逾?/div><p style="font-size:15px;font-weight:600;margin-bottom:6px">${msg}</p><p style="font-size:13px">??삘뀲 ??쇱뜖??뺢돌 ??쀬겱?????????紐꾩뒄.</p></div>`;}
-function _errorHTML(msg){return`<div style="text-align:center;padding:40px 20px;color:var(--red)"><div style="font-size:28px;margin-bottom:10px">?醫묓닔</div><p style="font-size:13px">${escHtml(msg)}</p></div>`;}
+function _loadingHTML(msg){return`<div style="text-align:center;padding:40px 20px;color:var(--gray-500)"><div style="font-size:28px;margin-bottom:10px">⏳</div><p style="font-size:14px;font-weight:600">${msg}</p></div>`;}
+function _emptyHTML(msg){return`<div style="text-align:center;padding:60px 20px;color:var(--gray-500)"><div style="font-size:40px;margin-bottom:12px">🔎</div><p style="font-size:15px;font-weight:600;margin-bottom:6px">${msg}</p><p style="font-size:13px">다른 키워드나 표현을 사용해보세요.</p></div>`;}
+function _errorHTML(msg){return`<div style="text-align:center;padding:40px 20px;color:var(--red)"><div style="font-size:28px;margin-bottom:10px">⚠️</div><p style="font-size:13px">${escHtml(msg)}</p></div>`;}
 function _paginationHTML(page,totalPages,fnName){
   if(totalPages<=1)return'';
   const s=a=>a?'background:var(--blue);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit':'background:var(--gray-100);color:var(--gray-700);border:none;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit';
   const st=Math.max(1,page-2),en=Math.min(totalPages,page+2);
   let h='<div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap">';
-  if(page>1)h+=`<button onclick="${fnName}(${page-1})" style="${s(false)}">????곸읈</button>`;
+  if(page>1)h+=`<button onclick="${fnName}(${page-1})" style="${s(false)}">‹ 이전</button>`;
   for(let i=st;i<=en;i++)h+=`<button onclick="${fnName}(${i})" style="${s(i===page)}">${i}</button>`;
-  if(page<totalPages)h+=`<button onclick="${fnName}(${page+1})" style="${s(false)}">??쇱벉 ??/button>`;
+  if(page<totalPages)h+=`<button onclick="${fnName}(${page+1})" style="${s(false)}">다음 ›</button>`;
   return h+'</div>';
 }
 
@@ -1779,22 +1560,22 @@ function closeDashSearch() {
   document.getElementById('dash-search-results').innerHTML = '';
 }
 
-// ???? COMMUNITY MODULE ????
+// ── COMMUNITY MODULE ──
 const CAT_LABELS = {
-  popular: { label: '???硫몃┛疫꼲', cls: 'cat-popular' },
-  qna:     { label: '??筌욌뜄揆',   cls: 'cat-qna' },
-  review:  { label: '????袁㏓┛',   cls: 'cat-review' },
-  regional:{ label: '?諭?筌왖??,   cls: 'cat-regional' },
-  anonymous:{ label:'?????ъ구',   cls: 'cat-anonymous' },
-  notice:  { label: '?諭??⑤벊?',   cls: 'cat-notice' },
+  popular: { label: '⭐ 인기글', cls: 'cat-popular' },
+  qna:     { label: '❓ 질문',   cls: 'cat-qna' },
+  review:  { label: '🎉 후기',   cls: 'cat-review' },
+  regional:{ label: '📍 지역',   cls: 'cat-regional' },
+  anonymous:{ label:'🤫 익명',   cls: 'cat-anonymous' },
+  notice:  { label: '📢 공지',   cls: 'cat-notice' },
 };
 
 const SAMPLE_POSTS = [
-  { id: 1, category: 'notice', title: '甕곗쥓苑???뚣끇???딅뼒 ??쎈탞 ??덇땀 ???, content: '??덈??뤾쉭?? 甕곗쥓苑??????낅빍??\n??뺣탵??癰귣벊? ?뚣끇???딅뼒揶쎛 ??쎈탞??뤿???щ빍??\n\n??랁닋 ?袁㏓┛, 筌욌뜄揆, 筌왖???類ｋ궖 ????쇰펶????곷튊疫꿸퀡? ??롫떊雅뚯눘苑??\n??뺤쨮??野껋?肉???⑤벊???롢늺 ??筌띾‘? ?브쑬諭???袁???獄쏆룇??????됰선?? ???, author: '甕곗쥓苑???', date: '2025-01-10', likes: 34, region: '' },
-  { id: 2, category: 'review', title: '筌????遺욧쉭 筌왖????뺣탵??獄쏆룇釉??곸뒄!! ??20筌띾슣???議쇰?, content: '??덈??뤾쉭????뽰뒻 ?????럡??????25???띯뫁???뱀뵠?癒?뒄.\n甕곗쥓苑??뚯몵嚥???랁닋 ?類ｌぇ 92%??⑦??????獄쏆꼷?딂쳸?륁벥 ??롢늺???醫롪퍕??덈뮉??n筌욊쑴彛ⓩ에??諭??癒?뮸??덈뼄!!!\n\n?袁⑹뿯?醫됲???沃섎챶????紐?遺용튊 ??곸뒄. ????域밸㈇援????????뺤쓰 ??덉뵭??덈뼄揶쎛 ??쇰뻻 ?醫롪퍕??뉕탢?醫롮뒄.\n??삳굶 ???뵠??', author: '?????럡筌???, date: '2025-01-12', likes: 87, region: '??뽰뒻 ?????럡' },
-  { id: 3, category: 'qna', title: '?????곸뵬獄쏄퀣?燁삳?諭????굣 疫꿸퀣?????堉멨칰???롪돌??', content: '??덈??뤾쉭?? ?띯뫁毓썰빳???餓λ쵐??28??곸뿯??덈뼄.\n甕곗쥓苑??뚮퓠??獄쏄퀣?燁삳?諭???랁닋 ?類ｌぇ??85%嚥???륁넅?遺얜쑓\n?諭?????굣 疫꿸퀣????類μ넇????堉멨칰???롫뮉筌왖 ?袁⑸뻻?????④쑴?듿첎???\n???뺍 ??륁뿯????덈뮉???우뮇媛?袁? 椰꾧퉮???깃퐣??', author: '?띯뫁?????彛?, date: '2025-01-13', likes: 12, region: '' },
-  { id: 4, category: 'regional', title: '?봔????곸뒲????筌??덌쭪??癒?쉽???類ｋ궖 ?⑤벊???곸뒄', content: '?봔????곸뒲????椰꾧퀣竊?筌??덆겫袁⑤굶!\n??곸뒲????筌??덌쭪??癒?쉽?怨쀫퓠??癰귢쑬猷?癰귣벊? ?怨룸뼖???얜?利뷸에???곸㉢??덈뼄.\n雅뚯눘?? ??곸뒲???닌딄퍕 3筌?n??곸겫??볦퍢: ??깆뵬 09:00-18:00\n\n甕곗쥓苑??뚯뵠??揶쏆늿????뽰뒠??롢늺 筌욊쑴彛?筌띾‘? ??쀪문 獄쏆룇??????됰선??', author: '??곸뒲??筌???, date: '2025-01-14', likes: 31, region: '?봔????곸뒲???? },
-  { id: 5, category: 'anonymous', title: '癰귣벊? ?醫롪퍕??筌≪?逾??野?揶쏆늿釉??筌띿빘苑??욱???됰선??..', content: '雅뚯눖??癒?퐣 "??域밸챶??椰?獄쏆룇釉????"??곕뮉 ??뽮퐨???醫됯펾 ?怨쀫연??n獄쏆룇???癒?봄????덈뮉?怨뺣즲 ?醫롪퍕??筌???랁???됰선??\n\n?諭????쑴???野껋?肉???됱몵?????④쑴?듿첎???\n??堉멨칰?筌띾뜆????類ｂ봺??뤿?遺? 亦낃낫???곸뒄.', author: '??ъ구', date: '2025-01-15', likes: 55, region: '' },
+  { id: 1, category: 'notice', title: '베네픽 커뮤니티 오픈 안내 🎉', content: '안녕하세요, 베네픽 팀입니다.\n드디어 복지 커뮤니티가 오픈되었습니다!\n\n수급 후기, 질문, 지역 정보 등 다양한 이야기를 나눠주세요.\n서로의 경험을 공유하면 더 많은 분들이 도움을 받을 수 있어요. 🙌', author: '베네픽팀', date: '2025-01-10', likes: 34, region: '' },
+  { id: 2, category: 'review', title: '청년 월세 지원 드디어 받았어요!! 월 20만원 ㅠㅠ', content: '안녕하세요 서울 은평구에 사는 25살 취준생이에요.\n베네픽으로 수급 확률 92%라고 나와서 반신반의 하면서 신청했는데\n진짜로 승인됐습니다!!!\n\n전입신고 꼭 미리 해두셔야 해요. 저는 그거 때문에 한번 탈락했다가 다시 신청했거든요.\n다들 파이팅!', author: '은평구청년', date: '2025-01-12', likes: 87, region: '서울 은평구' },
+  { id: 3, category: 'qna', title: '국민내일배움카드 소득 기준이 어떻게 되나요?', content: '안녕하세요! 취업준비 중인 28살입니다.\n베네픽에서 배움카드 수급 확률이 85%로 나왔는데\n혹시 소득 기준이 정확히 어떻게 되는지 아시는 분 계신가요?\n알바 수입이 있는데 괜찮을지 걱정돼서요.', author: '취준생_희망', date: '2025-01-13', likes: 12, region: '' },
+  { id: 4, category: 'regional', title: '부산 해운대구 청년지원센터 정보 공유해요', content: '부산 해운대구 거주 청년분들!\n해운대구 청년지원센터에서 별도 복지 상담을 무료로 해줍니다.\n주소: 해운대구청 3층\n운영시간: 평일 09:00-18:00\n\n베네픽이랑 같이 활용하면 진짜 많은 혜택 받을 수 있어요!', author: '해운대청년', date: '2025-01-14', likes: 31, region: '부산 해운대구' },
+  { id: 5, category: 'anonymous', title: '복지 신청이 창피한 것 같아서 망설이고 있어요...', content: '주변에서 "너 그런 거 받아도 돼?"라는 시선이 신경 쓰여서\n받을 자격이 있는데도 신청을 못 하고 있어요.\n\n혹시 비슷한 경험 있으신 분 계신가요?\n어떻게 마음을 정리하셨는지 궁금해요.', author: '익명', date: '2025-01-15', likes: 55, region: '' },
 ];
 
 let commPosts = [];
@@ -1802,11 +1583,11 @@ let currentFilter = 'all';
 let currentDetailId = null;
 
 const AI_TIPS = [
-  '?裕?筌????遺욧쉭 筌왖?癒? ?袁⑹뿯?醫됲у첎? ?袁⑸땾! ?醫롪퍕 ??獄쏆꼶諭???類ㅼ뵥??뤾쉭??',
-  '?裕??????곸뵬獄쏄퀣?燁삳?諭???띯뫁毓?癒껊９?깍쭪怨몄쁽 筌뤴뫀紐??醫롪퍕 揶쎛?館鍮??덈뼄.',
-  '?裕?癰귣벊? ??쀪문?? 餓λ쵎????롮죯??揶쎛?館釉?野껋럩??첎? 筌띾‘釉?? ???쀬눊????類ㅼ뵥??뤾쉭??',
-  '?裕?筌???袁⑸튋?④쑴伊??筌띲끉??70筌띾슣????뱀뿯 ???類?疫꿸퀣肉ф묾?筌ㅼ뮆? 6%??獄쏆룇??????됰선??',
-  '?裕?筌띾뜆?у쳞?우뺏 獄쏅뗄??㎗?롫뮉 ???굣???얜떯???띿쓺 ?醫롪퍕 揶쎛?館鍮??덈뼄.',
+  '💡 청년 월세 지원은 전입신고가 필수! 신청 전 반드시 확인하세요.',
+  '💡 국민내일배움카드는 취업자·재직자 모두 신청 가능합니다.',
+  '💡 복지 혜택은 중복 수령이 가능한 경우가 많아요. 꼭 꼼꼼히 확인하세요!',
+  '💡 청년도약계좌는 매월 70만원 납입 시 정부기여금 최대 6%를 받을 수 있어요.',
+  '💡 마음건강 바우처는 소득과 무관하게 신청 가능합니다.',
 ];
 
 function initComm() {
@@ -1835,9 +1616,9 @@ function timeAgo(dateStr) {
   const d = new Date(dateStr);
   const now = new Date();
   const diff = Math.floor((now - d) / 86400000);
-  if (diff === 0) return '??삳뮎';
-  if (diff === 1) return '??곸젫';
-  if (diff < 7) return diff + '????;
+  if (diff === 0) return '오늘';
+  if (diff === 1) return '어제';
+  if (diff < 7) return diff + '일 전';
   return dateStr;
 }
 
@@ -1873,21 +1654,18 @@ function renderCommPosts() {
             <h4>${escHtml(post.title)}</h4>
             <p>${escHtml(post.content.substring(0, 80))}${post.content.length > 80 ? '...' : ''}</p>
             <div class="comm-post-meta">
-              <span class="comm-meta-item author">?維 ${escHtml(post.author)}</span>
-              ${post.region ? `<span class="comm-meta-item">?諭?${escHtml(post.region)}</span>` : ''}
-              <span class="comm-meta-item">?釉?${timeAgo(post.date)}</span>
+              <span class="comm-meta-item author">👤 ${escHtml(post.author)}</span>
+              ${post.region ? `<span class="comm-meta-item">📍 ${escHtml(post.region)}</span>` : ''}
+              <span class="comm-meta-item">🕐 ${timeAgo(post.date)}</span>
             </div>
           </div>
           <div class="comm-post-right">
             <div class="comm-stats">
-              <span class="comm-stat">??욱닔 ${post.likes}</span>
+              <span class="comm-stat">❤️ ${post.likes}</span>
             </div>
           </div>
         </div>`;
     }).join('');
-    Array.from(policyList.childNodes).forEach(node => {
-      if (node.nodeType === Node.TEXT_NODE) node.remove();
-    });
   }
 
   renderHotList('hotPostList');
@@ -1902,7 +1680,7 @@ function renderHotList(elId) {
     <div class="hot-item" onclick="showCommDetail(${p.id})">
       <span class="hot-num">${i+1}</span>
       <span class="hot-title">${escHtml(p.title)}</span>
-      <span class="hot-likes">??욱닔${p.likes}</span>
+      <span class="hot-likes">❤️${p.likes}</span>
     </div>`).join('');
 }
 
@@ -1925,14 +1703,14 @@ function showCommDetail(id) {
   document.getElementById('commDetailCard').innerHTML = `
     <div class="comm-detail-meta">
       <span class="comm-post-cat-badge ${cat.cls}">${cat.label}</span>
-      ${post.region ? `<span class="comm-meta-item">?諭?${escHtml(post.region)}</span>` : ''}
-      <span class="comm-meta-item author">?維 ${escHtml(post.author)}</span>
-      <span class="comm-meta-item">?釉?${timeAgo(post.date)}</span>
+      ${post.region ? `<span class="comm-meta-item">📍 ${escHtml(post.region)}</span>` : ''}
+      <span class="comm-meta-item author">👤 ${escHtml(post.author)}</span>
+      <span class="comm-meta-item">🕐 ${timeAgo(post.date)}</span>
     </div>
     <h2>${escHtml(post.title)}</h2>
     <div class="comm-detail-content">${escHtml(post.content)}</div>
     <button class="comm-like-btn ${isLiked ? 'liked' : ''}" id="likeBtn" onclick="toggleLike(${id})">
-      ${isLiked ? '??욱닔' : '?夷?} ?ル뿭釉??<span id="likeCount">${post.likes}</span>
+      ${isLiked ? '❤️' : '🤍'} 좋아요 <span id="likeCount">${post.likes}</span>
     </button>
   `;
 
@@ -1986,15 +1764,15 @@ function submitPost() {
   const cat = document.getElementById('modalCat').value;
   const region = document.getElementById('modalRegion').value.trim();
 
-  if (!title) { alert('??뺛걠????낆젾??곻폒?紐꾩뒄.'); return; }
-  if (!content) { alert('??곸뒠????낆젾??곻폒?紐꾩뒄.'); return; }
+  if (!title) { alert('제목을 입력해주세요.'); return; }
+  if (!content) { alert('내용을 입력해주세요.'); return; }
 
   const newPost = {
     id: Date.now(),
     category: cat,
     title,
     content,
-    author: '??μ젟?袁⑤뻷',
+    author: '남정현님',
     date: new Date().toISOString().slice(0,10),
     likes: 0,
     region,
@@ -2022,30 +1800,30 @@ function escHtml(str) {
 // Init community on page load
 initComm();
 
-// community 筌욊낯???臾롫젏 ???癒?짗 ???쐭筌?
+// community 직접 접근 시 자동 렌더링
 (function() {
   const currentPage = location.pathname;
   if (currentPage === '/community') {
     renderCommPosts();
-    // insight widget ?λ뜃由??
+    // insight widget 초기화
     const p = document.getElementById('iStatPosts');
     const l = document.getElementById('iStatLikes');
     if (p) p.textContent = commPosts.length;
     if (l) l.textContent = commPosts.reduce((s, post) => s + post.likes, 0);
     insightAnimateBars();
-    // FAB ??뽯뻻
+    // FAB 표시
     const fab = document.getElementById('fabWrite');
     if (fab) fab.classList.add('visible');
   }
 })();
 
-// ???? INSIGHT WIDGET ????
+// ── INSIGHT WIDGET ──
 const INSIGHT_REVIEWS = [
-  { text: '?醫롪퍕????룹퍟癰귣????類ｌ춾 揶쏄쑵???곸뒄!', tag: '#筌???遺욧쉭筌왖??夷??????럡筌??? },
-  { text: '??뺤첒 餓Β???? 雅뚯눖??源낆쨯?源낅궚?????뼎!', tag: '#??곸뵬獄쏄퀣?燁삳?諭?夷??띯뫁?????彛? },
-  { text: '甕곗쥓苑???類ｍ뀋??筌뤾퀡?????쀪문 獄쏆뮄猿??됰선??', tag: '#???굣?硫몄빵筌?夷???ъ구' },
-  { text: '??20筌띾슣??筌왖????쇱젫嚥?獄쏆룇釉??щ빍???議쇰?, tag: '#筌???遺욧쉭筌왖??夷???뽰뒻筌??? },
-  { text: '癰귣벊? ?醫롪퍕, ?諭肉??亦낅슢???됱뒄. 筌띿빘苑??? 筌띾뜆苑??', tag: '#??ъ구?⑥쥓? 夷???ъ구' },
+  { text: '신청이 생각보다 정말 간편해요!', tag: '#청년월세지원 · 은평구청년' },
+  { text: '서류 준비 팁: 주민등록등본이 핵심!', tag: '#내일배움카드 · 취준생_희망' },
+  { text: '베네픽 덕분에 몰랐던 혜택 발견했어요.', tag: '#소득세감면 · 익명' },
+  { text: '월 20만원 지원 실제로 받았습니다 ㅠㅠ', tag: '#청년월세지원 · 서울청년' },
+  { text: '복지 신청, 당연한 권리예요. 망설이지 마세요!', tag: '#익명고민 · 익명' },
 ];
 let insightIdx = 0;
 
@@ -2089,7 +1867,7 @@ function insightInit() {
 }
 insightInit();
 
-// ???? Language Selector ????
+// ── Language Selector ──
 function toggleLangDropdown() {
   const btn = document.getElementById('langBtn');
   const dd = document.getElementById('langDropdown');
@@ -2141,7 +1919,7 @@ document.addEventListener('click', (e) => {
   }
 });
 
-// ???? ONBOARDING GUIDE ????????????????????????????????????????????????????????????????????????????????????
+// ── ONBOARDING GUIDE ──────────────────────────────────────────
 const ONBOARDING_STORAGE_KEY = 'benefic_seen_guide_v20260424';
 
 function initOnboarding() {
@@ -2165,56 +1943,38 @@ function closeOnboardingForever() {
   closeOnboarding();
 }
 
-// ???? ??뺤첒 燁삳?諭??醫? (筌ｋ똾寃???곸젫) ??????????????????????????????????????????????????????????????????
-// 雅뚯눘?? window.load ?꾩뮆媛???????醫롫섧??롢늺 ?遺욧땀??쀫맙????쇳맜?袁⑸퓠 揶쏅돉?
-//       HTML onclick?癒?퐣 ReferenceError揶쎛 獄쏆뮇源?????袁⑸열 ??쇳맜?袁⑥쨮 ??猷?
+// ── 서류 카드 토글 (체크/해제) ─────────────────────────────────
+// 주의: window.load 콜백 내부에 선언하면 화살표함수 스코프에 갇혀
+//       HTML onclick에서 ReferenceError가 발생함 → 전역 스코프로 이동
 function toggleDocCard(el, originalText) {
   const p = el.querySelector('.doc-info p');
   const status = el.querySelector('.doc-status');
   if (el.classList.contains('ready')) {
     el.classList.remove('ready');
-    status.textContent = '??;
+    status.textContent = '⬜';
     p.removeAttribute('data-i18n');
     p.textContent = originalText;
   } else {
     el.classList.add('ready');
-    status.textContent = '??;
+    status.textContent = '✅';
     p.removeAttribute('data-i18n');
-    p.textContent = '??餓Β???袁⑥┷';
+    p.textContent = '✅ 준비 완료';
   }
-}
-
-function animateProgressBars(root = document, baseDelay = 300) {
-  const bars = Array.from(root.querySelectorAll('.progress-fill'));
-  bars.forEach((bar, i) => {
-    const finalW = bar.dataset.finalWidth || bar.style.width;
-    if (!finalW || finalW === '0' || finalW === '0%' || finalW === '0px') return;
-    bar.dataset.finalWidth = finalW;
-    bar.style.width = '0%';
-    window.setTimeout(() => {
-      bar.style.width = finalW;
-    }, baseDelay + i * 80);
-  });
-
-  // Safety net: if the browser skips the transition during first paint,
-  // restore the intended width so gauges never stay invisible.
-  window.setTimeout(() => {
-    bars.forEach(bar => {
-      const finalW = bar.dataset.finalWidth;
-      if (finalW && (!bar.style.width || bar.style.width === '0%' || bar.style.width === '0px')) {
-        bar.style.width = finalW;
-      }
-    });
-  }, baseDelay + bars.length * 80 + 900);
 }
 
 // Animate bars on load
 window.addEventListener('load', () => {
-  animateProgressBars(document, 300);
+  document.querySelectorAll('.progress-fill').forEach((bar, i) => {
+    const finalW = bar.style.width;
+    bar.style.width = '0';
+    setTimeout(() => {
+      bar.style.width = finalW;
+    }, 300 + i * 120);
+  });
   initDashSearch();
   initOnboarding();
 
-  // ?袁⑹삺 ??륁뵠筌왖??筌띿쉶???λ뜃由????쎈뻬
+  // 현재 페이지에 맞는 초기화 실행
   const currentPage = location.pathname;
   if (currentPage === '/search') {
     initSearch();
@@ -2222,40 +1982,40 @@ window.addEventListener('load', () => {
   if (currentPage === '/analysis') {
     const pid = (() => { try { return localStorage.getItem('benefic_detail_id'); } catch(e) { return null; } })();
     if (pid) {
-      // 癰귣벊??筌앸맩????????showDetail ??showTab('detail')????쇰뻻 analysis.html嚥?
-      // ??猷???????????얜똾釉??룐뫂遊썲첎? ??룸┛??野껉퍔??筌△뫀??
+      // 복원 즉시 삭제 — showDetail 내 showTab('detail')이 다시 analysis.html로
+      // 이동 → 재복원 → 무한 루프가 생기는 것을 차단
       try { localStorage.removeItem('benefic_detail_id'); } catch(e) {}
       showDetail(pid);
     }
   }
 });
 
-// ?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름
-// 甕곗쥓苑??v2.0 ???紐꾩쵄 & ?袁⑥뺍?? ??뺚댘??쇱뒲 ??뽯뮞??
-// ?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름
+// ══════════════════════════════════════════════════════════════
+// 베네픽 v2.0 — 인증 & 아바타 드롭다운 시스템
+// ══════════════════════════════════════════════════════════════
 
-// ?袁⑹삺 嚥≪뮄????醫? ?類ｋ궖 揶쎛?紐꾩궎疫?(localStorage 疫꿸퀡而?
+// 현재 로그인 유저 정보 가져오기 (localStorage 기반)
 function getAuthUser() {
   try {
     const token = localStorage.getItem('token');
     const user  = localStorage.getItem('benefic_user');
     if (token && user) return JSON.parse(user);
-    if (token) return { name: '?????, initial: '?? };
+    if (token) return { name: '사용자', initial: '나' };
   } catch(e) {}
   return null;
 }
 
-// ?袁⑥뺍?? ??뺚댘??쇱뒲 ??용┛/??る┛
+// 아바타 드롭다운 열기/닫기
 function toggleAvatarDropdown() {
   const dd = document.getElementById('avatarDropdown');
   if (!dd) return;
   const isOpen = dd.classList.contains('open');
-  // ??삘뀲 ??뺚댘??쇱뒲 ??る┛ (?紐꾨선 ??
+  // 다른 드롭다운 닫기 (언어 등)
   document.querySelectorAll('.lang-dropdown').forEach(el => el.classList.remove('open'));
   dd.classList.toggle('open', !isOpen);
 }
 
-// ?紐? ????????る┛
+// 외부 클릭 시 닫기
 document.addEventListener('click', function(e) {
   const avatarWrap = document.querySelector('.nav-avatar-wrap');
   if (avatarWrap && !avatarWrap.contains(e.target)) {
@@ -2264,14 +2024,14 @@ document.addEventListener('click', function(e) {
   }
 });
 
-// 嚥≪뮄??袁⑹뜍
+// 로그아웃
 function doLogout() {
   localStorage.removeItem('token');
   localStorage.removeItem('benefic_user');
   window.location.href = '/login';
 }
 
-// ??륁뵠筌왖 嚥≪뮆諭????袁⑥뺍?? ?怨몃열 ?λ뜃由??
+// 페이지 로드 시 아바타 영역 초기화
 function initAuthNav() {
   const wrap = document.querySelector('.nav-avatar');
   if (!wrap) return;
@@ -2279,36 +2039,36 @@ function initAuthNav() {
   const user = getAuthUser();
 
   if (user) {
-    // ?袁⑥쨮??燁삳?諭???已レ쮯?袁⑥뺍?? ??낅쑓??꾨뱜 (localStorage ?癒?궚 域밸챶?嚥?
+    // 프로필 카드 이름·아바타 업데이트 (localStorage 원본 그대로)
     const profileName   = document.getElementById('profileName');
     const profileAvatar = document.getElementById('profileAvatar');
-    if (profileName)   profileName.textContent   = user.name || '?????;
-    if (profileAvatar) profileAvatar.textContent = user.initial || user.name?.[0] || '??;
+    if (profileName)   profileName.textContent   = user.name || '사용자';
+    if (profileAvatar) profileAvatar.textContent = user.initial || user.name?.[0] || '나';
 
-    // 嚥≪뮄????怨밴묶: ?袁⑥뺍?? + ??뺚댘??쇱뒲
+    // 로그인 상태: 아바타 + 드롭다운
     wrap.outerHTML = `
       <div class="nav-avatar-wrap" onclick="toggleAvatarDropdown()">
         <div class="nav-avatar" style="cursor:pointer;">
-          <div class="avatar-circle">${user.initial || user.name?.[0] || '??}</div>
-          <span class="avatar-name">${user.name || '?????}??/span>
-          <span>??/span>
+          <div class="avatar-circle">${user.initial || user.name?.[0] || '나'}</div>
+          <span class="avatar-name">${user.name || '사용자'}님</span>
+          <span>▾</span>
         </div>
         <div class="avatar-dropdown" id="avatarDropdown">
           <div class="avatar-dropdown-inner">
             <div class="avatar-dd-header">
-              <div class="avatar-dd-circle">${user.initial || user.name?.[0] || '??}</div>
+              <div class="avatar-dd-circle">${user.initial || user.name?.[0] || '나'}</div>
               <div>
-                <div class="avatar-dd-name">${user.name || '?????}??/div>
+                <div class="avatar-dd-name">${user.name || '사용자'}님</div>
                 <div class="avatar-dd-email">${user.email || ''}</div>
               </div>
             </div>
             <div class="avatar-dd-divider"></div>
-            <a href="/scrap" class="avatar-dd-item" data-i18n="nav_scrap">??쎄쾿??/a>
-            <a href="/portfolio" class="avatar-dd-item" data-i18n="nav_user_portfolio">??????????/a>
-            <a href="/profile" class="avatar-dd-item" data-i18n="nav_user_profile">?維 揶쏆뮇??類ｋ궖 ??륁젟</a>
-            <a href="/recently-viewed" class="avatar-dd-item" data-i18n="nav_user_recently">?釉?筌ㅼ뮄??癰??⑤벀??/a>
+            <a href="/scrap" class="avatar-dd-item" data-i18n="nav_scrap">스크랩</a>
+            <a href="/portfolio" class="avatar-dd-item" data-i18n="nav_user_portfolio">내 포트폴리오</a>
+            <a href="/profile" class="avatar-dd-item" data-i18n="nav_user_profile">👤 개인정보 수정</a>
+            <a href="/recently-viewed" class="avatar-dd-item" data-i18n="nav_user_recently">🕒 최근 본 공고</a>
             <div class="avatar-dd-divider"></div>
-            <div class="avatar-dd-item logout" onclick="doLogout()" data-i18n="nav_user_logout">???嚥≪뮄??袁⑹뜍</div>
+            <div class="avatar-dd-item logout" onclick="doLogout()" data-i18n="nav_user_logout">🚪 로그아웃</div>
           </div>
         </div>
       </div>`;
@@ -2317,31 +2077,31 @@ function initAuthNav() {
       try { applyTranslations(loadLang()); } catch(e) {}
     }
   } else {
-    // ??쑬以덃뉩紐꾩뵥: 嚥≪뮄???甕곌쑵??
+    // 비로그인: 로그인 버튼
     wrap.outerHTML = `
       <div class="nav-avatar-wrap">
-        <a href="/login" class="btn-login-nav">?逾?嚥≪뮄???/a>
+        <a href="/login" class="btn-login-nav">🔑 로그인</a>
       </div>`;
   }
 }
 
-// login.html ?癒?퐣 嚥≪뮄????源껊궗 ???醫? ?類ｋ궖 ????(login.html?癒?퐣 ?紐꾪뀱)
+// login.html 에서 로그인 성공 후 유저 정보 저장 (login.html에서 호출)
 function saveAuthUser(token, userData) {
   localStorage.setItem('token', token);
   localStorage.setItem('benefic_user', JSON.stringify(userData));
 }
 
-// ??륁뵠筌왖 嚥≪뮆諭????癒?짗 ??쎈뻬
+// 페이지 로드 시 자동 실행
 document.addEventListener('DOMContentLoaded', initAuthNav);
 
 
-// ?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름
-// ??쑬以덃뉩紐꾩뵥 ?醫됲닊 ??살쒔??됱뵠 ??checkLoginStatus & applyLockOverlay
-// ?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름?癒λ름
+// ══════════════════════════════════════════════════════════════
+// 비로그인 잠금 오버레이 — checkLoginStatus & applyLockOverlay
+// ══════════════════════════════════════════════════════════════
 
 /**
- * ?袁⑹삺 嚥≪뮄????怨밴묶 ?類ㅼ뵥
- * @returns {boolean} 嚥≪뮄??????
+ * 현재 로그인 상태 확인
+ * @returns {boolean} 로그인 여부
  */
 function checkLoginStatus() {
   try {
@@ -2354,26 +2114,26 @@ function checkLoginStatus() {
 }
 
 /**
- * ??쑬以덃뉩紐꾩뵥 ???????遺용꺖???醫됲닊 ??살쒔??됱뵠??雅뚯눘???뺣뼄.
- * - .is-locked ?????살쨮 pointer-events 筌△뫀??
- * - .locked-overlay 嚥?blur + ??덇땀 ?얜㈇????뽯뻻
- * - data-i18n="login_required" ??욧쉐??곗쨮 ??븍럢??筌ｌ꼶??
+ * 비로그인 시 대상 요소에 잠금 오버레이를 주입한다.
+ * - .is-locked 클래스로 pointer-events 차단
+ * - .locked-overlay 로 blur + 안내 문구 표시
+ * - data-i18n="login_required" 속성으로 다국어 처리
  *
- * @param {string} targetSelector  ?醫? ?遺용꺖??CSS ????꿸숲
- * @param {object} [options]       ????(loginUrl: 嚥≪뮄?????륁뵠筌왖 野껋럥以?
+ * @param {string} targetSelector  잠글 요소의 CSS 셀렉터
+ * @param {object} [options]       옵션 (loginUrl: 로그인 페이지 경로)
  */
 function applyLockOverlay(targetSelector, options = {}) {
   const loginUrl = options.loginUrl || '/login';
 
   document.querySelectorAll(targetSelector).forEach(target => {
-    // ??? 筌ｌ꼶????遺용꺖 椰꾨?瑗??
+    // 이미 처리된 요소 건너뜀
     if (target.classList.contains('is-locked')) return;
 
     target.classList.add('is-locked');
 
-    // i18n ??살쨮 ?袁⑹삺 ?紐꾨선 ??용뮞??揶쎛?紐꾩궎疫?(i18n.js ?袁⑸열 ??λ땾 ??뽰뒠)
-    let msgText  = '嚥≪뮄??紐꾩뵠 ?袁⑹뒄????뺥돩??쇱뿯??덈뼄';
-    let btnText  = '?逾?嚥≪뮄??紐낅릭疫?;
+    // i18n 키로 현재 언어 텍스트 가져오기 (i18n.js 전역 함수 활용)
+    let msgText  = '로그인이 필요한 서비스입니다';
+    let btnText  = '🔑 로그인하기';
     try {
       const lang = (typeof loadLang === 'function') ? loadLang() : 'ko';
       if (typeof TRANSLATIONS !== 'undefined' && TRANSLATIONS[lang]) {
@@ -2386,7 +2146,7 @@ function applyLockOverlay(targetSelector, options = {}) {
     overlay.className = 'locked-overlay';
     overlay.innerHTML = `
       <div class="locked-content">
-        <div class="locked-icon">?逾?/div>
+        <div class="locked-icon">🔒</div>
         <p class="locked-msg" data-i18n="login_required">${msgText}</p>
         <a href="${loginUrl}" class="btn-lock-login" data-i18n="login_btn">${btnText}</a>
       </div>`;
@@ -2396,19 +2156,19 @@ function applyLockOverlay(targetSelector, options = {}) {
 }
 
 /**
- * ??쑬以덃뉩紐꾩뵥 ?怨밴묶????雅뚯눘??????뺣궖??燁삳?諭??쇱뱽 ?醫됰젏??
- * ?醫? ???? ??륁벥 ??랁닋 ?袁れ넺 / ?곕뗄荑?????????/ 筌띿쉸???곕뗄荑???뺥돩??
- * (?醫롪퍕 筌ｋ똾寃뺟뵳???紐껊뮉 ?醫됰젃筌왖 ??놁벉 ????쑬?揶?UI)
+ * 비로그인 상태일 때 주요 대시보드 카드들을 잠근다.
+ * 잠글 대상: 나의 수급 현황 / 추천 포트폴리오 / 맞춤 추천 서비스
+ * (신청 체크리스트는 잠그지 않음 — 비민감 UI)
  */
 function initLockOverlays() {
-  if (checkLoginStatus()) return;   // 嚥≪뮄????怨밴묶筌??袁ⓓ℡칰猿딅즲 ??? ??놁벉
+  if (checkLoginStatus()) return;   // 로그인 상태면 아무것도 하지 않음
 
-  // ??쑬以덃뉩紐꾩뵥 ???怨룸뼊 ?袁⑥쨮??燁삳?諭?.profile-card)筌??醫됲닊
+  // 비로그인 시 상단 프로필 카드(.profile-card)만 잠금
   applyLockOverlay('.profile-card', { loginUrl: '/login' });
 }
 
-// DOMContentLoaded ???癒?짗 ??쎈뻬 (initAuthNav ??꾩뜎 ??덉삂 癰귣똻??
+// DOMContentLoaded 시 자동 실행 (initAuthNav 이후 동작 보장)
 document.addEventListener('DOMContentLoaded', () => {
-  // initAuthNav揶쎛 ?믪눘? ??쎈뻬?????醫됲닊 筌ｌ꼶??
+  // initAuthNav가 먼저 실행된 뒤 잠금 처리
   requestAnimationFrame(initLockOverlays);
 });
