@@ -1,0 +1,11 @@
+torch
+transformers>=4.57
+peft>=0.19
+accelerate
+bitsandbytes
+safetensors
+fastapi
+uvicorn[standard]
+pydantic
+python-dotenv
+pandas
