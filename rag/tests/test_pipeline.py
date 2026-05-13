@@ -13,7 +13,7 @@ _mock_modules = [
     "chromadb", "rank_bm25", "sentence_transformers",
     "FlagEmbedding", "langchain_ollama",
     "langchain_core", "langchain_core.messages",
-    "dotenv", "pandas",
+    "dotenv", "pandas", "torch",
 ]
 for _mod in _mock_modules:
     sys.modules.setdefault(_mod, MagicMock())
@@ -326,6 +326,55 @@ class TestGenerateAnswer:
 # ═════════════════════════════════════════════════════════════════
 # 8. benepick_rag (메인 파이프라인 통합 테스트)
 # ═════════════════════════════════════════════════════════════════
+class TestConfidenceHelpers:
+    def test_assess_answer_confidence_high(self):
+        docs = [
+            make_doc(policy_name="청년 월세 지원", score=0.88, rank=1),
+            make_doc(policy_name="청년 취업 지원", score=0.70, rank=2),
+            make_doc(policy_name="기초생활 지원", score=0.60, rank=3),
+        ]
+        result = pipeline.assess_answer_confidence("청년 월세 지원", docs)
+        assert result["level"] == "high"
+        assert result["needs_confirmation"] is False
+
+    def test_assess_answer_confidence_low(self):
+        docs = [
+            make_doc(policy_name="A", score=0.52, rank=1),
+            make_doc(policy_name="B", score=0.51, rank=2),
+            make_doc(policy_name="C", score=0.49, rank=3),
+        ]
+        result = pipeline.assess_answer_confidence("야간 온라인 교육 지원", docs)
+        assert result["level"] == "low"
+        assert result["needs_confirmation"] is True
+
+    def test_apply_confidence_fallback_exposes_candidates(self):
+        docs = [
+            make_doc(policy_name="A", score=0.52, rank=1),
+            make_doc(policy_name="B", score=0.51, rank=2),
+            make_doc(policy_name="C", score=0.49, rank=3),
+        ]
+        confidence = pipeline.assess_answer_confidence("야간 온라인 교육 지원", docs)
+        answer = """핵심 답변:
+- 기존 답변
+
+근거 정책:
+- 임시 정책
+
+신청/확인 방법:
+- 링크 확인
+
+확인 필요:
+- 세부 조건 확인
+
+출처:
+- 임시 정책: https://example.com
+"""
+        result = pipeline.apply_confidence_fallback(answer, confidence, docs, "ko")
+        assert "후보" in result or "정책" in result
+        assert "A" in result
+        assert "B" in result
+
+
 class TestBenepickRag:
     def setup_method(self):
         _mock_searcher_instance.reset_mock()
@@ -359,6 +408,11 @@ class TestBenepickRag:
         assert "docs_used" in data
         assert "doc_count" in data
         assert "search_time_ms" in data
+
+        assert "confidence_level" in data
+        assert "confidence_score" in data
+        assert "needs_confirmation" in data
+        assert "top_policy_candidates" in data
 
     def test_query_passthrough(self):
         query = "청년 월세 지원"
@@ -441,3 +495,122 @@ class TestBenepickRag:
     def test_pipeline_calls_llm(self):
         pipeline.benepick_rag("청년 지원")
         _mock_llm.invoke.assert_called_once()
+
+
+class TestAgenticPlanner:
+    def setup_method(self):
+        _mock_searcher_instance.reset_mock()
+        _mock_searcher_instance.search.side_effect = None
+        _mock_searcher_instance.search.return_value = SAMPLE_DOCS
+
+    def test_extract_query_plan_fields_picks_target_and_support(self):
+        result = pipeline.extract_query_plan_fields("청년 월세 지원을 받고 싶어요")
+        assert result["policy_target"] == "청년"
+        assert result["support_type"] == "주거"
+
+    def test_gemma_planner_gating_targets_ambiguous_queries_only(self):
+        with patch.dict("os.environ", {
+            "ENABLE_GEMMA_QUERY_PLANNER": "1",
+            "GEMMA_QUERY_PLANNER_AMBIGUOUS_ONLY": "1",
+        }, clear=False):
+            assert pipeline._should_use_gemma_query_planner(
+                "직장인이 야간에 들을 수 있는 온라인 교육 지원이 있나요?",
+                {
+                    "intent": "일반 문의",
+                    "policy_target": "직장인",
+                    "support_type": "교육/훈련",
+                    "modifiers": ["온라인", "야간"],
+                    "specific_question": False,
+                },
+            ) is True
+            assert pipeline._should_use_gemma_query_planner(
+                "청년 월세 지원 받을 수 있나요?",
+                {
+                    "intent": "자격 조건",
+                    "policy_target": "청년",
+                    "support_type": "주거",
+                    "modifiers": ["월세"],
+                    "specific_question": True,
+                },
+            ) is False
+
+    def test_extract_query_plan_fields_uses_gemma_and_normalizes_output(self):
+        _mock_llm.invoke.return_value = MagicMock(content="""{
+            "intent": "추천/비교",
+            "policy_target": "소상공인",
+            "support_type": "금융/자산형성",
+            "modifiers": ["대출", "보증", "없는키워드"],
+            "specific_question": false
+        }""")
+        pipeline.llm_label = "Ollama (gemma4:e2b)"
+
+        with patch.dict("os.environ", {
+            "ENABLE_GEMMA_QUERY_PLANNER": "1",
+            "GEMMA_QUERY_PLANNER_AMBIGUOUS_ONLY": "1",
+        }, clear=False):
+            result = pipeline.extract_query_plan_fields("소상공인 대출 지원 정책 추천해줘")
+
+        assert result["policy_target"] == "소상공인"
+        assert result["support_type"] == "금융/자산형성"
+        assert result["modifiers"] == ["대출"]
+
+    def test_extract_query_plan_fields_falls_back_to_rule_on_gemma_failure(self):
+        _mock_llm.invoke.side_effect = RuntimeError("planner failed")
+        pipeline.llm_label = "Ollama (gemma4:e2b)"
+
+        with patch.dict("os.environ", {
+            "ENABLE_GEMMA_QUERY_PLANNER": "1",
+            "GEMMA_QUERY_PLANNER_AMBIGUOUS_ONLY": "1",
+        }, clear=False):
+            result = pipeline.extract_query_plan_fields("직장인이 야간에 들을 수 있는 온라인 교육 지원이 있나요?")
+
+        assert result["policy_target"] == "직장인"
+        assert result["support_type"] == "교육/훈련"
+        assert "온라인" in result["modifiers"]
+        assert "야간" in result["modifiers"]
+        _mock_llm.invoke.side_effect = None
+
+    def test_build_refined_query_creates_meaningful_query(self):
+        query = "직장인을 위한 야간 온라인 교육 지원이 있나요?"
+        plan_fields = pipeline.extract_query_plan_fields(query)
+        refined = pipeline.build_refined_query(query, plan_fields)
+        assert "직장인" in refined
+        assert "온라인" in refined or "야간" in refined
+        assert "직업훈련" in refined or "교육" in refined
+
+    def test_retrieve_does_not_retry_when_confidence_is_high(self):
+        docs = [make_doc(policy_name="청년 월세 지원", score=0.91, rank=1)]
+        _mock_searcher_instance.search.side_effect = [docs, [make_doc(policy_name="다른 정책", score=0.95, rank=1)]]
+
+        with patch.object(pipeline, "rerank", side_effect=lambda query, results, top_k=5: results[:top_k]),              patch.object(pipeline, "assess_answer_confidence", return_value={
+                 "level": "high",
+                 "confidence_score": 0.91,
+                 "candidate_policy_names": ["청년 월세 지원"],
+             }),              patch.object(pipeline, "crag_quality_check", side_effect=lambda query, results: results[:5]):
+            result = pipeline.retrieve_rag_documents("청년 월세 지원이 있나요?")
+
+        assert result["success"] is True
+        assert _mock_searcher_instance.search.call_count == 1
+
+    def test_retrieve_replaces_docs_only_when_refined_confidence_is_better(self):
+        base_docs = [make_doc(policy_id="101", policy_name="기본 정책", score=0.52, rank=1)]
+        refined_docs = [make_doc(policy_id="202", policy_name="개선 정책", score=0.74, rank=1)]
+        _mock_searcher_instance.search.side_effect = [base_docs, refined_docs]
+
+        with patch.object(pipeline, "rerank", side_effect=lambda query, results, top_k=5: results[:top_k]),              patch.object(pipeline, "assess_answer_confidence", side_effect=[
+                 {
+                     "level": "low",
+                     "confidence_score": 0.41,
+                     "candidate_policy_names": ["기본 정책"],
+                 },
+                 {
+                     "level": "medium",
+                     "confidence_score": 0.69,
+                     "candidate_policy_names": ["개선 정책"],
+                 },
+             ]),              patch.object(pipeline, "crag_quality_check", side_effect=lambda query, results: results[:5]):
+            result = pipeline.retrieve_rag_documents("직장인을 위한 야간 온라인 교육 지원이 있나요?")
+
+        assert result["success"] is True
+        assert _mock_searcher_instance.search.call_count == 2
+        assert result["data"]["docs_used"][0]["policy_id"] == "202"
