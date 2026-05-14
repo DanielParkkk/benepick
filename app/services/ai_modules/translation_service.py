@@ -61,6 +61,16 @@ class PolicyTranslationService:
         self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
         self.timeout = float(timeout or os.getenv("OLLAMA_TIMEOUT", "300"))
         self.prompt_path = prompt_path or os.getenv("TRANSLATION_PROMPT_PATH", "prompts/prompt_translation.txt")
+        self.translation_backend = os.getenv("BENEPICK_TRANSLATION_BACKEND", "auto").strip().lower()
+        self.gemma4_lora_base_model = os.getenv(
+            "GEMMA4_LORA_BASE_MODEL",
+            "unsloth/gemma-4-E4B-it-unsloth-bnb-4bit",
+        )
+        self.gemma4_lora_adapter_path = os.getenv("GEMMA4_LORA_ADAPTER_PATH", "").strip()
+        self.gemma4_lora_max_length = int(os.getenv("GEMMA4_LORA_MAX_LENGTH", "2048"))
+        self.gemma4_lora_max_new_tokens = int(os.getenv("GEMMA4_LORA_MAX_NEW_TOKENS", "384"))
+        self.gemma4_lora_strict = os.getenv("BENEPICK_TRANSLATION_STRICT_LORA", "0").strip() == "1"
+        self._gemma4_lora_runtime = None
 
         self.glossary_df = self._load_glossary(csv_path)
         self.prompt_builder = self._build_prompt_builder()
@@ -177,6 +187,23 @@ class PolicyTranslationService:
                 normalized["translated_text"] = string_values[0]
 
         return normalized
+
+    def _should_try_gemma4_lora(self) -> bool:
+        if self.translation_backend not in {"auto", "lora", "gemma4_lora"}:
+            return False
+        return bool(self.gemma4_lora_adapter_path)
+
+    def _call_gemma4_lora_json(self, messages: List[Dict[str, str]]) -> Dict:
+        if self._gemma4_lora_runtime is None:
+            from .gemma4_lora_translation_service import Gemma4LoraTranslationRuntime
+
+            self._gemma4_lora_runtime = Gemma4LoraTranslationRuntime(
+                base_model=self.gemma4_lora_base_model,
+                adapter_path=self.gemma4_lora_adapter_path,
+                max_length=self.gemma4_lora_max_length,
+                max_new_tokens=self.gemma4_lora_max_new_tokens,
+            )
+        return self._gemma4_lora_runtime.translate_json(messages)
 
     @staticmethod
     def _format_number(value: float, target_lang: str) -> str:
@@ -324,13 +351,26 @@ class PolicyTranslationService:
         )
         last_error: Exception | None = None
         data: Dict[str, str] | None = None
-        for candidate_model in self._candidate_models(target_lang):
+        translation_source = self.model_name
+
+        if self._should_try_gemma4_lora():
             try:
-                data = self._call_model_json_for_model(candidate_model, messages, schema)
-                break
+                data = self._call_gemma4_lora_json(messages)
+                translation_source = "gemma4-e4b-unsloth-lora"
             except Exception as exc:
                 last_error = exc
-                continue
+                if self.gemma4_lora_strict:
+                    raise
+
+        if data is None:
+            for candidate_model in self._candidate_models(target_lang):
+                try:
+                    data = self._call_model_json_for_model(candidate_model, messages, schema)
+                    translation_source = candidate_model
+                    break
+                except Exception as exc:
+                    last_error = exc
+                    continue
 
         if data is None:
             raise RuntimeError(f"Translation failed for all candidate models: {last_error}")
@@ -358,6 +398,6 @@ class PolicyTranslationService:
         return {
             "language": target_lang,
             "translated_text": translated_text,
-            "translation_source": self.model_name,
+            "translation_source": translation_source,
             "is_fallback": False,
         }
