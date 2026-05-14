@@ -255,3 +255,7 @@ CODEX_PATH_MEMORY.md
 DELETE_SAFETY_CHECKLIST.md
 *.zip
 *.ipynb
+
+frontend/.env.vercel.preview
+frontend/.env.vercel.production
+frontend/.env.vercel.pull
