@@ -15,6 +15,7 @@ const NAV_LINKS = [
   { href: '/', label: '대시보드', i18n: 'nav_dashboard', key: 'dashboard' },
   { href: '/search', label: '정책 검색', i18n: 'nav_search', key: 'search' },
   { href: '/community', label: '커뮤니티', i18n: 'nav_community', key: 'community' },
+  { href: '/notices', label: '공지사항', i18n: 'nav_notices', key: 'notices' },
 ];
 
 export default function NavBar({ activePage = '' }) {
@@ -127,7 +128,7 @@ export default function NavBar({ activePage = '' }) {
     window.location.href = '/login';
   };
 
-  const initial = user?.initial || user?.name?.[0] || '나';
+  const initial = user?.initial || user?.name?.[0] || '사';
   const userName = user?.name || '사용자';
 
   return (
@@ -192,23 +193,24 @@ export default function NavBar({ activePage = '' }) {
           <div className="nav-avatar-wrap" ref={avatarWrapRef} onClick={toggleAvatarDropdown} style={{ position: 'relative', cursor: 'pointer' }}>
             {user ? (
               <>
-                <div className="nav-avatar" style={{ cursor: 'pointer' }}>
+                <div className="nav-avatar">
                   <div className="avatar-circle">{initial}</div>
-                  <span className="avatar-name">{userName}님</span>
-                  <span>▼</span>
+                  <span className="avatar-name">{userName}</span>
+                  <span>▾</span>
                 </div>
                 <div className={`avatar-dropdown${avatarDropdownOpen ? ' open' : ''}`} id="avatarDropdown">
                   <div className="avatar-dropdown-inner">
                     <div className="avatar-dd-header">
                       <div className="avatar-dd-circle">{initial}</div>
                       <div>
-                        <div className="avatar-dd-name">{userName}님</div>
+                        <div className="avatar-dd-name">{userName}</div>
                         <div className="avatar-dd-email">{user.email || ''}</div>
                       </div>
                     </div>
                     <div className="avatar-dd-divider" />
                     <Link href="/scrap" className="avatar-dd-item" data-i18n="nav_scrap" onClick={() => setAvatarDropdownOpen(false)}>스크랩</Link>
                     <Link href="/profile" className="avatar-dd-item" data-i18n="nav_user_profile" onClick={() => setAvatarDropdownOpen(false)}>개인정보 수정</Link>
+                    <Link href="/portfolio" className="avatar-dd-item" data-i18n="nav_portfolio" onClick={() => setAvatarDropdownOpen(false)}>내 포트폴리오</Link>
                     <Link href="/recently-viewed" className="avatar-dd-item" data-i18n="nav_user_recently" onClick={() => setAvatarDropdownOpen(false)}>최근 본 공고</Link>
                     <div className="avatar-dd-divider" />
                     <div className="avatar-dd-item logout" onClick={doLogout} data-i18n="nav_user_logout">로그아웃</div>

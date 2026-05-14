@@ -44,7 +44,7 @@ class PolicySummaryService:
 
         self.model_name = model_name or os.getenv(
             "SUMMARY_MODEL",
-            os.getenv("GEMMA_MODEL", os.getenv("QWEN_MODEL", "gemma4:latest")),
+            os.getenv("GEMMA_MODEL", "gemma4:latest"),
         )
         self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
         self.timeout = float(timeout or os.getenv("OLLAMA_TIMEOUT", "300"))

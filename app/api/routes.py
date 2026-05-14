@@ -60,6 +60,33 @@ except Exception:  # pragma: no cover - optional AI module
 
 
 router = APIRouter(prefix="/api/v1")
+SUPPORTED_LANGS = {"ko", "en", "zh", "ja", "vi"}
+
+
+def normalize_lang_code(lang: str | None) -> str:
+    normalized = str(lang or "ko").lower().strip()
+    return normalized if normalized in SUPPORTED_LANGS else "ko"
+
+
+def localized_rag_fallback(kind: str, lang: str) -> str:
+    lang = normalize_lang_code(lang)
+    messages = {
+        "recommendation": {
+            "ko": "RAG 문서 기반 추천 결과입니다. 요약 생성이 지연되어 핵심 추천 목록을 먼저 표시합니다.",
+            "en": "These recommendations are based on RAG documents. Summary generation is delayed, so the key recommendations are shown first.",
+            "ja": "RAG文書に基づくおすすめ結果です。要約生成が遅れているため、主要なおすすめ一覧を先に表示します。",
+            "zh": "这是基于RAG文档的推荐结果。摘要生成稍有延迟，因此先显示核心推荐列表。",
+            "vi": "Đây là kết quả đề xuất dựa trên tài liệu RAG. Phần tóm tắt đang bị trì hoãn nên danh sách đề xuất chính được hiển thị trước.",
+        },
+        "search": {
+            "ko": "RAG 문서 기반 검색 결과입니다. 요약 생성이 지연되어 결과 목록을 먼저 표시합니다.",
+            "en": "These search results are based on RAG documents. Summary generation is delayed, so the result list is shown first.",
+            "ja": "RAG文書に基づく検索結果です。要約生成が遅れているため、結果一覧を先に表示します。",
+            "zh": "这是基于RAG文档的搜索结果。摘要生成稍有延迟，因此先显示结果列表。",
+            "vi": "Đây là kết quả tìm kiếm dựa trên tài liệu RAG. Phần tóm tắt đang bị trì hoãn nên danh sách kết quả được hiển thị trước.",
+        },
+    }
+    return messages.get(kind, messages["search"])[lang]
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PROCESSED_CHUNK_PATHS = (
@@ -468,12 +495,72 @@ def search_policy_summaries(db: Session, keyword: str, size: int) -> list[Policy
     return items
 
 
+def clone_policy_summary(item: PolicySummary, updates: dict[str, object]) -> PolicySummary:
+    if hasattr(item, "model_dump"):
+        data = item.model_dump()
+    else:
+        data = item.dict()
+    data.update(updates)
+    return PolicySummary(**data)
+
+
+def translate_policy_summary(db: Session, item: PolicySummary, target_lang: str) -> PolicySummary:
+    target_lang = normalize_lang_code(target_lang)
+    if target_lang == "ko" or ai_enricher is None:
+        return item
+
+    policy_text = build_policy_text(db, item.policy_id)
+    if not policy_text:
+        policy_text = " ".join(
+            part
+            for part in [
+                item.title,
+                item.description or "",
+                item.benefit_summary or "",
+                item.benefit_amount_label or "",
+            ]
+            if part
+        )
+
+    def translate(value: str | None) -> str | None:
+        if not value:
+            return value
+        try:
+            return ai_enricher.translate_text(value, policy_text, target_lang, generic_fallback=False)
+        except Exception:
+            return value
+
+    translated_badges: list[str] = []
+    for badge in item.badge_items:
+        translated = translate(badge)
+        translated_badges.append(translated or badge)
+
+    return clone_policy_summary(
+        item,
+        {
+            "title": translate(item.title) or item.title,
+            "description": translate(item.description) if item.description else item.description,
+            "benefit_amount_label": translate(item.benefit_amount_label) if item.benefit_amount_label else item.benefit_amount_label,
+            "benefit_summary": translate(item.benefit_summary) if item.benefit_summary else item.benefit_summary,
+            "badge_items": translated_badges,
+        },
+    )
+
+
+def translate_policy_summaries(db: Session, items: list[PolicySummary], target_lang: str) -> list[PolicySummary]:
+    target_lang = normalize_lang_code(target_lang)
+    if target_lang == "ko":
+        return items
+    return [translate_policy_summary(db, item, target_lang) for item in items]
+
+
 def resolve_rag_references(
     db: Session,
     references: list[str],
     *,
     request: AnalyzeRequest | None = None,
     rag_answer: str | None = None,
+    target_lang: str = "ko",
 ) -> tuple[list[PolicySummary], list[AnalyzedPolicy], list[UnmatchedPolicyItem]]:
     matched_analyzed: list[AnalyzedPolicy] = []
     unmatched: list[UnmatchedPolicyItem] = []
@@ -527,6 +614,7 @@ def resolve_rag_references(
         build_summary_from_analyzed(item, index=index)
         for index, item in enumerate(matched_analyzed, start=1)
     ]
+    items = translate_policy_summaries(db, items, target_lang)
 
     return items, matched_analyzed, unmatched
 
@@ -744,10 +832,47 @@ def build_detail_data(db: Session, policy_id: str, *, target_lang: str = "ko") -
             processed_sections.get("신청서류"),
         )
     )
+    target_lang = normalize_lang_code(target_lang)
+    if target_lang != "ko" and ai_enricher is not None:
+        policy_text = build_policy_text(db, policy_id)
+
+        def translate_detail_text(value: str | None) -> str | None:
+            if not value:
+                return value
+            try:
+                return ai_enricher.translate_text(value, policy_text, target_lang, generic_fallback=False)
+            except Exception:
+                return value
+
+        title = translate_detail_text(master.title) or master.title
+        description = translate_detail_text(description) if description else description
+        support_target_text = translate_detail_text(support_target_text) if support_target_text else support_target_text
+        selection_criteria_text = translate_detail_text(selection_criteria_text) if selection_criteria_text else selection_criteria_text
+        support_content_text = translate_detail_text(support_content_text) if support_content_text else support_content_text
+        application_period_text = translate_detail_text(application_period_text) if application_period_text else application_period_text
+        application_method_text = translate_detail_text(application_method_text) if application_method_text else application_method_text
+        required_documents_text = translate_detail_text(required_documents_text) if required_documents_text else required_documents_text
+        contact_text = translate_detail_text(contact_text) if contact_text else contact_text
+        org_text = translate_detail_text(org_text) if org_text else org_text
+        documents = [
+            RequiredDocumentItem(
+                document_type=doc.document_type,
+                document_name=translate_detail_text(doc.document_name) or doc.document_name,
+                is_required=doc.is_required,
+                description=translate_detail_text(doc.description) if doc.description else doc.description,
+                status=doc.status,
+                issued_within_days=doc.issued_within_days,
+                uploaded_file_url=doc.uploaded_file_url,
+                verified_at=doc.verified_at,
+            )
+            for doc in documents
+        ]
+    else:
+        title = master.title
 
     return PolicyDetailData(
         policy_id=master.policy_id,
-        title=master.title,
+        title=title,
         description=description,
         match_score=match_score,
         score_level=score_level,
@@ -780,6 +905,7 @@ def build_detail_data(db: Session, policy_id: str, *, target_lang: str = "ko") -
 
 @router.post("/eligibility/analyze", response_model=SuccessResponse[AnalyzeResponseData])
 def analyze(request: AnalyzeRequest, db: Session = Depends(get_db)):
+    lang = normalize_lang_code(request.lang_code)
     rag_result = search_rag(
         query=build_rag_condition_query(request),
         user_condition={
@@ -791,7 +917,7 @@ def analyze(request: AnalyzeRequest, db: Session = Depends(get_db)):
             "housing_status": request.housing_status.value,
             "interest_tags": request.interest_tags,
         },
-        lang_code="ko",
+        lang_code=lang,
     )
 
     rag_policies, rag_analyzed, unmatched = resolve_rag_references(
@@ -799,6 +925,7 @@ def analyze(request: AnalyzeRequest, db: Session = Depends(get_db)):
         rag_result.docs_used,
         request=request,
         rag_answer=rag_result.answer,
+        target_lang=lang,
     )
     if rag_analyzed:
         analyzed_items = rag_analyzed
@@ -809,6 +936,7 @@ def analyze(request: AnalyzeRequest, db: Session = Depends(get_db)):
             build_summary_from_analyzed(item, index=index)
             for index, item in enumerate(analyzed_items[:5], start=1)
         ]
+        policies = translate_policy_summaries(db, policies, lang)
         unmatched = []
 
     persist_analysis_state(db, request, analyzed_items)
@@ -816,7 +944,7 @@ def analyze(request: AnalyzeRequest, db: Session = Depends(get_db)):
     analysis_score = round(sum(item.match_score for item in policies) / max(1, len(policies)))
     rag_answer_text = rag_result.answer
     if (not rag_answer_text) and rag_result.docs_used:
-        rag_answer_text = "RAG 문서 기반 추천 결과입니다. 요약 생성이 지연되어 핵심 추천 목록을 먼저 표시합니다."
+        rag_answer_text = localized_rag_fallback("recommendation", lang)
 
     return SuccessResponse(
         data=AnalyzeResponseData(
@@ -824,6 +952,11 @@ def analyze(request: AnalyzeRequest, db: Session = Depends(get_db)):
             policies=policies,
             rag_answer=rag_answer_text,
             rag_docs_used=rag_result.docs_used,
+            rag_confidence_level=rag_result.confidence_level,
+            rag_confidence_score=rag_result.confidence_score,
+            rag_confidence_reason=rag_result.confidence_reason,
+            rag_top_policy_candidates=rag_result.top_policy_candidates or [],
+            rag_needs_confirmation=rag_result.needs_confirmation,
             unmatched_policies=unmatched,
         )
     )
@@ -836,16 +969,18 @@ def search_policies(
     lang: str = Query(default="ko", pattern="^(ko|en|zh|ja|vi)$"),
     db: Session = Depends(get_db),
 ):
+    lang = normalize_lang_code(lang)
     keyword = q.strip()
     rag_result = search_rag(query=keyword, user_condition={}, lang_code=lang)
-    items, _, unmatched = resolve_rag_references(db, rag_result.docs_used[:size])
+    items, _, unmatched = resolve_rag_references(db, rag_result.docs_used[:size], target_lang=lang)
     if not items:
         items = search_policy_summaries(db, keyword, size)
+        items = translate_policy_summaries(db, items, lang)
         unmatched = []
 
     rag_answer_text = rag_result.answer
     if (not rag_answer_text) and rag_result.docs_used:
-        rag_answer_text = "RAG 문서 기반 검색 결과입니다. 요약 생성이 지연되어 결과 목록을 먼저 표시합니다."
+        rag_answer_text = localized_rag_fallback("search", lang)
 
     return SuccessResponse(
         data=PolicySearchData(
@@ -854,6 +989,11 @@ def search_policies(
             total_count=len(items),
             rag_answer=rag_answer_text,
             rag_docs_used=rag_result.docs_used,
+            rag_confidence_level=rag_result.confidence_level,
+            rag_confidence_score=rag_result.confidence_score,
+            rag_confidence_reason=rag_result.confidence_reason,
+            rag_top_policy_candidates=rag_result.top_policy_candidates or [],
+            rag_needs_confirmation=rag_result.needs_confirmation,
             unmatched_policies=unmatched,
         )
     )

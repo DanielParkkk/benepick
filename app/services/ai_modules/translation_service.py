@@ -56,7 +56,7 @@ class PolicyTranslationService:
 
         self.model_name = model_name or os.getenv(
             "TRANSLATION_MODEL",
-            os.getenv("GEMMA_MODEL", os.getenv("QWEN_MODEL", "gemma4:latest")),
+            os.getenv("GEMMA_MODEL", "gemma4:latest"),
         )
         self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
         self.timeout = float(timeout or os.getenv("OLLAMA_TIMEOUT", "300"))
@@ -247,19 +247,14 @@ class PolicyTranslationService:
     def _candidate_models(self, target_lang: str) -> List[str]:
         candidates: list[str] = []
 
-        env_specific = (
-            os.getenv(f"GEMMA_TRANSLATION_MODEL_{target_lang.upper()}")
-            or os.getenv(f"QWEN_TRANSLATION_MODEL_{target_lang.upper()}")
-        )
-        env_generic = os.getenv("GEMMA_TRANSLATION_MODEL") or os.getenv("QWEN_TRANSLATION_MODEL")
+        env_specific = os.getenv(f"GEMMA_TRANSLATION_MODEL_{target_lang.upper()}")
+        env_generic = os.getenv("GEMMA_TRANSLATION_MODEL")
 
         if env_specific:
             candidates.append(env_specific)
         if env_generic:
             candidates.append(env_generic)
         candidates.append(self.model_name)
-        if target_lang in {"zh", "ja"}:
-            candidates.append("qwen3:4b")
 
         deduped: list[str] = []
         seen: set[str] = set()

@@ -159,7 +159,46 @@ _STRICT_TARGET_TERMS = {
     "청소년", "소상공인", "자영업", "경력단절", "여성",
 }
 
-ENABLE_RANK_PRECISION_BONUS = os.getenv("BENEPICK_ENABLE_RANK_PRECISION_BONUS", "0") == "1"
+_TARGET_MISMATCH_RULES = [
+    (
+        {"직장인", "재직자"},
+        {"구직", "구직자", "실업", "미취업", "취업준비생", "훈련생"},
+        -0.18,
+        -0.10,
+    ),
+    (
+        {"저소득층", "차상위", "기초생활", "수급자"},
+        {"장애인"},
+        -0.14,
+        -0.08,
+    ),
+]
+
+_BENEFIT_ALIGNMENT_RULES = [
+    (
+        {"대출", "보증", "이자", "이차보전", "융자"},
+        {"저축", "자산형성", "희망저축", "청년내일저축계좌", "자활"},
+        {"대출", "보증", "이자", "이차보전", "융자", "정책자금"},
+        -0.18,
+        -0.10,
+    ),
+    (
+        {"온라인", "야간", "직업훈련", "직무", "재직자"},
+        {"방과후", "유치원", "석식비", "정보화교육", "수강권"},
+        {"직업훈련", "직업능력개발", "사이버", "사업주", "재직자", "폴리텍"},
+        -0.16,
+        -0.10,
+    ),
+    (
+        {"의료", "의료비", "진료비", "본인부담금"},
+        {"보조기기", "이동지원", "수리비"},
+        {"의료", "의료비", "진료비", "본인부담금", "병원", "치료"},
+        -0.14,
+        -0.08,
+    ),
+]
+
+ENABLE_RANK_PRECISION_BONUS = os.getenv("BENEPICK_ENABLE_RANK_PRECISION_BONUS", "1") == "1"
 
 _REGION_ALIASES = {
     "서울": {"서울", "서울시", "서울특별시"},
@@ -361,6 +400,28 @@ def _rank_precision_bonus(
             bonus += 0.04
         else:
             bonus -= 0.08
+
+    for required_terms, mismatch_terms, title_penalty, body_penalty in _TARGET_MISMATCH_RULES:
+        if not (required_terms & query_terms):
+            continue
+        if mismatch_terms & query_terms:
+            continue
+        if any(_compact_text(term) in compact_name for term in mismatch_terms):
+            bonus += title_penalty
+        elif any(_compact_text(term) in compact_text for term in mismatch_terms):
+            bonus += body_penalty
+
+    for required_terms, mismatch_terms, alignment_terms, title_penalty, body_penalty in _BENEFIT_ALIGNMENT_RULES:
+        if not (required_terms & query_terms):
+            continue
+        if any(_compact_text(term) in compact_name for term in alignment_terms):
+            continue
+        if any(_compact_text(term) in compact_text for term in alignment_terms):
+            continue
+        if any(_compact_text(term) in compact_name for term in mismatch_terms):
+            bonus += title_penalty
+        elif any(_compact_text(term) in compact_text for term in mismatch_terms):
+            bonus += body_penalty
 
     # Region should affect rank, but nationwide policies remain valid.
     target_regions = set()

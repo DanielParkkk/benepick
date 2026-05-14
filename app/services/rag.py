@@ -23,9 +23,64 @@ class RagSearchResult:
     success: bool
     answer: str | None
     docs_used: list[str]
+    confidence_level: str | None = None
+    confidence_score: float | None = None
+    confidence_reason: str | None = None
+    top_policy_candidates: list[str] | None = None
+    needs_confirmation: bool = False
 
 
-def _build_fallback_answer(final_docs: list[dict[str, object]]) -> str | None:
+_FALLBACK_HEADERS = {
+    "ko": ["핵심 답변", "근거 정책", "신청/확인 방법", "확인 필요", "출처"],
+    "en": ["Key Answer", "Supporting Policies", "How to Apply/Check", "Needs Confirmation", "Sources"],
+    "ja": ["要点回答", "根拠となる政策", "申請・確認方法", "確認が必要", "出典"],
+    "zh": ["核心回答", "依据政策", "申请/确认方法", "需要确认", "出处"],
+    "vi": ["Câu trả lời chính", "Chính sách làm căn cứ", "Cách đăng ký/kiểm tra", "Cần xác nhận", "Nguồn"],
+}
+
+_FALLBACK_MESSAGES = {
+    "ko": {
+        "summary": "상세 요약 생성이 지연되어 우선 추천 결과를 먼저 보여드립니다.",
+        "action": "각 정책의 공식 링크에서 지원 대상, 지원 내용, 신청 기간을 확인해 주세요.",
+        "need": "자동 요약이 지연된 상태이므로 최종 수급 여부는 공식 공고문 확인이 필요합니다.",
+        "no_source": "공식 출처 링크를 확인하지 못했습니다.",
+    },
+    "en": {
+        "summary": "Detailed summary generation is delayed, so the recommended results are shown first.",
+        "action": "Check each official link for eligibility, benefit details, and application dates.",
+        "need": "Because automatic summarization is delayed, final eligibility must be verified in the official notice.",
+        "no_source": "No official source link was available.",
+    },
+    "ja": {
+        "summary": "詳細要約の生成が遅れているため、まずおすすめ結果を表示します。",
+        "action": "各政策の公式リンクで、対象者、支援内容、申請期間を確認してください。",
+        "need": "自動要約が遅れているため、最終的な受給可否は公式公告で確認してください。",
+        "no_source": "公式出典リンクを確認できませんでした。",
+    },
+    "zh": {
+        "summary": "详细摘要生成稍有延迟，因此先显示推荐结果。",
+        "action": "请在各政策官方链接中确认支持对象、支持内容和申请期间。",
+        "need": "由于自动摘要生成延迟，最终受益资格需要查看官方公告。",
+        "no_source": "未能确认官方来源链接。",
+    },
+    "vi": {
+        "summary": "Phần tóm tắt chi tiết đang bị trì hoãn nên kết quả đề xuất được hiển thị trước.",
+        "action": "Hãy kiểm tra đối tượng hỗ trợ, nội dung hỗ trợ và thời gian đăng ký tại liên kết chính thức.",
+        "need": "Vì phần tóm tắt tự động bị trì hoãn, điều kiện nhận hỗ trợ cuối cùng cần được xác minh trong thông báo chính thức.",
+        "no_source": "Không xác nhận được liên kết nguồn chính thức.",
+    },
+}
+
+
+def _normalize_lang_code(lang_code: str | None) -> str:
+    normalized = str(lang_code or "ko").lower().strip()
+    return normalized if normalized in _FALLBACK_HEADERS else "ko"
+
+
+def _build_fallback_answer(final_docs: list[dict[str, object]], lang_code: str = "ko") -> str | None:
+    lang_code = _normalize_lang_code(lang_code)
+    headers = _FALLBACK_HEADERS[lang_code]
+    messages = _FALLBACK_MESSAGES[lang_code]
     policy_names: list[str] = []
     source_lines: list[str] = []
     seen_urls: set[str] = set()
@@ -43,23 +98,23 @@ def _build_fallback_answer(final_docs: list[dict[str, object]]) -> str | None:
 
     policy_lines = [f"- {name}" for name in policy_names[:3]]
     if not source_lines:
-        source_lines = ["- 공식 출처 링크를 확인하지 못했습니다."]
+        source_lines = [f"- {messages['no_source']}"]
 
     return "\n".join(
         [
-            "핵심 답변:",
-            "- 상세 요약 생성이 지연되어 우선 추천 결과를 먼저 보여드립니다.",
+            f"{headers[0]}:",
+            f"- {messages['summary']}",
             "",
-            "근거 정책:",
+            f"{headers[1]}:",
             *policy_lines,
             "",
-            "신청/확인 방법:",
-            "- 각 정책의 공식 링크에서 지원 대상, 지원 내용, 신청 기간을 확인해 주세요.",
+            f"{headers[2]}:",
+            f"- {messages['action']}",
             "",
-            "확인 필요:",
-            "- 자동 요약이 지연된 상태이므로 최종 수급 여부는 공식 공고문 확인이 필요합니다.",
+            f"{headers[3]}:",
+            f"- {messages['need']}",
             "",
-            "출처:",
+            f"{headers[4]}:",
             *source_lines,
         ]
     )
@@ -102,6 +157,12 @@ def _invoke_answer_generation(
     from rag.pipeline import generate_answer
 
     out["answer"] = generate_answer(query, docs, lang_code)
+
+
+def _assess_confidence(query: str, docs: list[dict[str, object]]) -> dict[str, object]:
+    from rag.pipeline import assess_answer_confidence
+
+    return assess_answer_confidence(query, docs)
 
 
 def _is_searcher_ready() -> bool:
@@ -197,6 +258,7 @@ def search_rag(*, query: str, user_condition: dict[str, object], lang_code: str 
                 docs_used.append(reference)
 
         final_docs = retrieval_data.get("final_docs") or []
+        confidence_meta = _assess_confidence(query, final_docs)
         retrieval_elapsed = time.perf_counter() - started_at
         remaining_time = max(0.0, timeout_seconds - retrieval_elapsed)
         answer_timeout_seconds = max(1.0, min(RAG_ANSWER_TIMEOUT_SECONDS, remaining_time))
@@ -229,7 +291,7 @@ def search_rag(*, query: str, user_condition: dict[str, object], lang_code: str 
                 answer = candidate
 
         if not answer:
-            answer = _build_fallback_answer(final_docs)
+            answer = _build_fallback_answer(final_docs, lang_code)
     except Exception as exc:
         logger.exception("RAG function call failed: %s", exc)
         if not cold_start_mode:
@@ -244,4 +306,9 @@ def search_rag(*, query: str, user_condition: dict[str, object], lang_code: str 
         success=bool(docs_used),
         answer=answer,
         docs_used=docs_used,
+        confidence_level=str(confidence_meta.get("level") or "") or None,
+        confidence_score=float(confidence_meta.get("confidence_score")) if confidence_meta.get("confidence_score") is not None else None,
+        confidence_reason=str(confidence_meta.get("reason") or "") or None,
+        top_policy_candidates=list(confidence_meta.get("candidate_policy_names") or []),
+        needs_confirmation=bool(confidence_meta.get("needs_confirmation")),
     )

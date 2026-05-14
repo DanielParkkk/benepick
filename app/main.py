@@ -56,6 +56,7 @@ app.add_middleware(
         "http://127.0.0.1:5500",
         "http://localhost:8080",
         "http://127.0.0.1:8080",
+        "https://benepick.vercel.app",
         "https://benepick.up.railway.app",
         "https://benepick-frontend.up.railway.app",
     ],
@@ -98,6 +99,10 @@ else:
             "sort_order": sort_order,
         }
 
+    def _normalize_lang(lang: Any) -> str:
+        value = str(lang or "ko").lower().strip()
+        return value if value in {"ko", "en", "zh", "ja", "vi"} else "ko"
+
     def _run_rag(
         query: str,
         lang: str,
@@ -124,7 +129,11 @@ else:
             f"income {payload.get('income_band', '')} "
             "welfare policy recommendation"
         ).strip()
-        rag_answer, docs, rag_error = _run_rag(query=query, lang="ko", user_condition=payload)
+        rag_answer, docs, rag_error = _run_rag(
+            query=query,
+            lang=_normalize_lang(payload.get("lang_code")),
+            user_condition=payload,
+        )
         policies = [_map_doc_to_policy_item(doc, i + 1) for i, doc in enumerate(docs[:5])]
         if not policies:
             policies = [
@@ -160,6 +169,7 @@ else:
         size: int = Query(default=20),
         lang: str = Query(default="ko"),
     ) -> dict[str, Any]:
+        lang = _normalize_lang(lang)
         rag_answer, docs, rag_error = _run_rag(query=q or "welfare policy", lang=lang, user_condition={})
         items = [_map_doc_to_policy_item(doc, i + 1) for i, doc in enumerate(docs[:size])]
         if not items:

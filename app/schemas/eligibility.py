@@ -20,6 +20,7 @@ class AnalyzeRequest(BaseModel):
     housing_status: HousingStatus
     # Soft preference tags for intent-aware retrieval/ranking.
     interest_tags: list[str] = Field(default_factory=list, max_length=5)
+    lang_code: str = Field(default="ko", pattern="^(ko|en|zh|ja|vi)$")
 
 
 class ProfileSummary(BaseModel):
@@ -33,4 +34,9 @@ class AnalyzeResponseData(BaseModel):
     policies: list[PolicySummary]
     rag_answer: str | None = None
     rag_docs_used: list[str] = Field(default_factory=list)
+    rag_confidence_level: str | None = None
+    rag_confidence_score: float | None = None
+    rag_confidence_reason: str | None = None
+    rag_top_policy_candidates: list[str] = Field(default_factory=list)
+    rag_needs_confirmation: bool = False
     unmatched_policies: list[UnmatchedPolicyItem] = Field(default_factory=list)

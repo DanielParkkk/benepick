@@ -1,4 +1,4 @@
-const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000").replace(/\/$/, "");
+const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
 const ANALYZE_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_ANALYZE_TIMEOUT_MS || 65000);
 
 // ── 소득 구간 매핑 ──────────────────────────────────────────────
@@ -48,6 +48,7 @@ export interface AnalyzeRequest {
   employment_status: string;
   housing_status: string;
   interest_tags?: string[];
+  lang_code?: string;
 }
 
 export interface PolicySummary {
@@ -69,6 +70,11 @@ export interface AnalyzeResponse {
   policies: PolicySummary[];
   rag_answer: string | null;
   rag_docs_used: string[];
+  rag_confidence_level: string | null;
+  rag_confidence_score: number | null;
+  rag_confidence_reason: string | null;
+  rag_top_policy_candidates: string[];
+  rag_needs_confirmation: boolean;
   unmatched_policies: { reference_id: string; source: string | null }[];
 }
 
@@ -78,6 +84,11 @@ export interface SearchResponse {
   total_count: number;
   rag_answer: string | null;
   rag_docs_used: string[];
+  rag_confidence_level: string | null;
+  rag_confidence_score: number | null;
+  rag_confidence_reason: string | null;
+  rag_top_policy_candidates: string[];
+  rag_needs_confirmation: boolean;
   unmatched_policies: { reference_id: string; source: string | null }[];
 }
 
@@ -114,12 +125,15 @@ export async function checkBackend(): Promise<boolean> {
 export async function analyzeEligibility(req: AnalyzeRequest) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS);
+  const activeLang =
+    req.lang_code ||
+    (typeof window !== "undefined" ? localStorage.getItem("benefic_lang") || "ko" : "ko");
   let res: Response;
   try {
     res = await fetch(`${API_BASE}/api/v1/eligibility/analyze`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(req),
+      body: JSON.stringify({ ...req, lang_code: activeLang }),
       signal: controller.signal,
     });
   } catch (error) {

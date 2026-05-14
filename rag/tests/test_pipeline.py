@@ -3,6 +3,8 @@ benepick RAG 파이프라인 단위 테스트
 실행: pytest tests/test_pipeline.py -v
 """
 import sys
+import importlib.util
+from pathlib import Path
 from unittest.mock import MagicMock, patch, call
 import pytest
 
@@ -13,7 +15,7 @@ _mock_modules = [
     "chromadb", "rank_bm25", "sentence_transformers",
     "FlagEmbedding", "langchain_ollama",
     "langchain_core", "langchain_core.messages",
-    "dotenv", "pandas", "torch",
+    "dotenv", "pandas", "torch", "kiwipiepy",
 ]
 for _mod in _mock_modules:
     sys.modules.setdefault(_mod, MagicMock())
@@ -614,3 +616,52 @@ class TestAgenticPlanner:
         assert result["success"] is True
         assert _mock_searcher_instance.search.call_count == 2
         assert result["data"]["docs_used"][0]["policy_id"] == "202"
+
+
+class TestSearchAlignmentBonus:
+    @classmethod
+    def setup_class(cls):
+        searcher_path = Path(__file__).resolve().parents[1] / "searcher.py"
+        spec = importlib.util.spec_from_file_location("searcher_alignment", searcher_path)
+        cls.searcher = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(cls.searcher)
+
+    def test_worker_query_penalizes_jobseeker_policy(self):
+        bonus = self.searcher._rank_precision_bonus(
+            query="직장인이 야간에 들을 수 있는 온라인 교육 지원이 있나요?",
+            policy_name="구직자 직업훈련 및 훈련장려금 지급",
+            evidence_text="구직자와 훈련생을 위한 직업훈련 지원",
+        )
+        aligned_bonus = self.searcher._rank_precision_bonus(
+            query="직장인이 야간에 들을 수 있는 온라인 교육 지원이 있나요?",
+            policy_name="사업주 직업능력개발 지원",
+            evidence_text="재직자 온라인 직업능력개발 훈련 지원",
+        )
+        assert aligned_bonus > bonus
+
+    def test_loan_query_penalizes_asset_building_policy(self):
+        bonus = self.searcher._rank_precision_bonus(
+            query="소상공인 대출 지원 정책 추천해줘",
+            policy_name="희망저축계좌 자산형성지원사업",
+            evidence_text="저축과 자산형성을 지원합니다.",
+        )
+        aligned_bonus = self.searcher._rank_precision_bonus(
+            query="소상공인 대출 지원 정책 추천해줘",
+            policy_name="소상공인 대출이자차액 보전",
+            evidence_text="소상공인 정책자금 대출 이자를 지원합니다.",
+        )
+        assert aligned_bonus > bonus
+
+    def test_low_income_medical_query_penalizes_disability_only_policy(self):
+        bonus = self.searcher._rank_precision_bonus(
+            query="저소득층 의료비 지원 받을 수 있나요?",
+            policy_name="저소득장애인 의료비 지원",
+            evidence_text="장애인을 대상으로 의료비를 지원합니다.",
+        )
+        aligned_bonus = self.searcher._rank_precision_bonus(
+            query="저소득층 의료비 지원 받을 수 있나요?",
+            policy_name="저소득층 의료비 지원",
+            evidence_text="저소득층 의료비와 본인부담금을 지원합니다.",
+        )
+        assert aligned_bonus > bonus
