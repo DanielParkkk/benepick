@@ -157,12 +157,16 @@ nav {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 64px;
+  min-height: 64px;
+  height: auto;
   position: sticky;
   top: 0;
   z-index: 200;
   box-shadow: 0 1px 0 var(--gray-100);
   gap: 20px;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 .nav-logo {
@@ -214,9 +218,16 @@ nav {
   flex: 1;
   justify-content: center;
   min-width: 0;
+  overflow: hidden;
 }
 
 .nav-center a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 1 120px;
+  min-width: 0;
+  max-width: 132px;
   font-size: 14px;
   color: var(--gray-500);
   text-decoration: none;
@@ -224,12 +235,33 @@ nav {
   border-radius: 8px;
   font-weight: 500;
   transition: all .15s;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  text-align: center;
+  line-height: 1.25;
 }
 
 .nav-center a:hover, .nav-center a.active {
   color: var(--gray-900);
   background: var(--gray-100);
+}
+
+@media (max-width: 1200px) {
+  nav {
+    padding: 10px 24px;
+    row-gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .nav-center {
+    order: 3;
+    flex: 1 1 100%;
+  }
+
+  .nav-right {
+    margin-left: 0;
+  }
 }
 
 .nav-right {
