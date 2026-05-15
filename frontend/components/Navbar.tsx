@@ -6,6 +6,8 @@ import { usePathname } from "next/navigation";
 const NAV_LINKS = [
   { href: "/", label: "대시보드", i18n: "nav_dashboard" },
   { href: "/search", label: "정책 검색", i18n: "nav_search" },
+  { href: "/portfolio", label: "포트폴리오", i18n: "nav_portfolio" },
+  { href: "/apply", label: "신청 보조", i18n: "nav_apply" },
   { href: "/community", label: "커뮤니티", i18n: "nav_community" },
   { href: "/notices", label: "공지사항", i18n: "nav_notices" },
 ];

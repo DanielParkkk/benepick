@@ -126,7 +126,10 @@ export default function SearchPage() {
         <div className="nav-center">
           <Link href="/" data-i18n="nav_dashboard">대시보드</Link>
           <Link href="/search" className="active" data-i18n="nav_search">정책 검색</Link>
+          <Link href="/portfolio" data-i18n="nav_portfolio">포트폴리오</Link>
+          <Link href="/apply" data-i18n="nav_apply">신청 보조</Link>
           <Link href="/community" data-i18n="nav_community">커뮤니티</Link>
+          <Link href="/notices" data-i18n="nav_notices">공지사항</Link>
         </div>
         <div className="nav-right">
           <div id="langSelector" className="lang-selector" ref={langSelectorRef}>

@@ -14,6 +14,8 @@ const LANG_DISPLAY = {
 const NAV_LINKS = [
   { href: '/', label: '대시보드', i18n: 'nav_dashboard', key: 'dashboard' },
   { href: '/search', label: '정책 검색', i18n: 'nav_search', key: 'search' },
+  { href: '/portfolio', label: '포트폴리오', i18n: 'nav_portfolio', key: 'portfolio' },
+  { href: '/apply', label: '신청 보조', i18n: 'nav_apply', key: 'apply' },
   { href: '/community', label: '커뮤니티', i18n: 'nav_community', key: 'community' },
   { href: '/notices', label: '공지사항', i18n: 'nav_notices', key: 'notices' },
 ];
@@ -209,7 +211,7 @@ export default function NavBar({ activePage = '' }) {
                     <div className="avatar-dd-divider" />
                     <Link href="/scrap" className="avatar-dd-item" data-i18n="nav_scrap" onClick={() => setAvatarDropdownOpen(false)}>스크랩</Link>
                     <Link href="/profile" className="avatar-dd-item" data-i18n="nav_user_profile" onClick={() => setAvatarDropdownOpen(false)}>개인정보 수정</Link>
-                    <Link href="/portfolio" className="avatar-dd-item" data-i18n="nav_portfolio" onClick={() => setAvatarDropdownOpen(false)}>내 포트폴리오</Link>
+                    <Link href="/portfolio" className="avatar-dd-item" data-i18n="nav_user_portfolio" onClick={() => setAvatarDropdownOpen(false)}>내 포트폴리오</Link>
                     <Link href="/recently-viewed" className="avatar-dd-item" data-i18n="nav_user_recently" onClick={() => setAvatarDropdownOpen(false)}>최근 본 공고</Link>
                     <div className="avatar-dd-divider" />
                     <div className="avatar-dd-item logout" onClick={doLogout} data-i18n="nav_user_logout">로그아웃</div>
