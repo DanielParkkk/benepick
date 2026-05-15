@@ -62,8 +62,7 @@ export default function NavBar({ activePage = '' }) {
   }, []);
 
   useEffect(() => {
-    if (!mounted) return;
-    if (activeLangCode === 'ko') return;
+    if (!mounted || activeLangCode === 'ko') return;
 
     const apply = () => {
       if (typeof window !== 'undefined' && typeof window.applyTranslations === 'function') {

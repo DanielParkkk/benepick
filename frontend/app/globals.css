@@ -162,6 +162,7 @@ nav {
   top: 0;
   z-index: 200;
   box-shadow: 0 1px 0 var(--gray-100);
+  gap: 20px;
 }
 
 .nav-logo {
@@ -169,6 +170,7 @@ nav {
   align-items: center;
   gap: 10px;
   text-decoration: none;
+  flex-shrink: 0;
 }
 
 .logo-mark {
@@ -209,19 +211,20 @@ nav {
   display: flex;
   align-items: center;
   gap: 4px;
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+  flex: 1;
+  justify-content: center;
+  min-width: 0;
 }
 
 .nav-center a {
   font-size: 14px;
   color: var(--gray-500);
   text-decoration: none;
-  padding: 6px 14px;
+  padding: 6px 12px;
   border-radius: 8px;
   font-weight: 500;
   transition: all .15s;
+  white-space: nowrap;
 }
 
 .nav-center a:hover, .nav-center a.active {
@@ -234,6 +237,7 @@ nav {
   align-items: center;
   gap: 10px;
   margin-left: auto;
+  flex-shrink: 0;
 }
 
 .nav-avatar {
