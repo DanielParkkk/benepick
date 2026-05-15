@@ -70,12 +70,31 @@ class PolicyTranslationService:
         self.gemma4_lora_max_length = int(os.getenv("GEMMA4_LORA_MAX_LENGTH", "2048"))
         self.gemma4_lora_max_new_tokens = int(os.getenv("GEMMA4_LORA_MAX_NEW_TOKENS", "384"))
         self.gemma4_lora_strict = os.getenv("BENEPICK_TRANSLATION_STRICT_LORA", "0").strip() == "1"
+        self.translation_trace_enabled = os.getenv("BENEPICK_TRANSLATION_TRACE", "0").strip() == "1"
         self._gemma4_lora_runtime = None
 
         self.glossary_df = self._load_glossary(csv_path)
         self.prompt_builder = self._build_prompt_builder()
         self.guard = OutputGuard()
         print(f"Translation model ready: {self.model_name}")
+
+    def _trace(self, event: str, **fields: object) -> None:
+        if not self.translation_trace_enabled:
+            return
+        payload = {"event": event, **fields}
+        try:
+            print("[TranslationTrace] " + json.dumps(payload, ensure_ascii=False, sort_keys=True))
+        except Exception:
+            print(f"[TranslationTrace] {event}")
+
+    @staticmethod
+    def _trace_error_message(exc: Exception | None) -> str | None:
+        if exc is None:
+            return None
+        message = str(exc).strip()
+        if not message:
+            return None
+        return message[:300]
 
     def _build_prompt_builder(self) -> PromptBuilder:
         prompt_dir = os.path.dirname(self.prompt_path) or "prompts"
@@ -326,6 +345,7 @@ class PolicyTranslationService:
         text = self._normalize_text(text)
         policy_text = clean_policy_text(policy_text)
         target_lang = str(target_lang or "ko").strip().lower()
+        input_len = len(text)
 
         if not text:
             raise ValueError("text is empty.")
@@ -350,6 +370,8 @@ class PolicyTranslationService:
             policy_context=policy_text,
         )
         last_error: Exception | None = None
+        last_error_type: str | None = None
+        last_error_message: str | None = None
         data: Dict[str, str] | None = None
         translation_source = self.model_name
 
@@ -359,6 +381,20 @@ class PolicyTranslationService:
                 translation_source = "gemma4-e4b-unsloth-lora"
             except Exception as exc:
                 last_error = exc
+                last_error_type = type(exc).__name__
+                last_error_message = self._trace_error_message(exc)
+                self._trace(
+                    "lora_error",
+                    source_lang="ko",
+                    target_lang=target_lang,
+                    model_name=self.model_name,
+                    translation_source="gemma4-e4b-unsloth-lora",
+                    exception_type=last_error_type,
+                    error_message=last_error_message,
+                    input_len=input_len,
+                    output_len=0,
+                    returned_original=False,
+                )
                 if self.gemma4_lora_strict:
                     raise
 
@@ -370,9 +406,23 @@ class PolicyTranslationService:
                     break
                 except Exception as exc:
                     last_error = exc
+                    last_error_type = type(exc).__name__
+                    last_error_message = self._trace_error_message(exc)
                     continue
 
         if data is None:
+            self._trace(
+                "translation_error",
+                source_lang="ko",
+                target_lang=target_lang,
+                model_name=self.model_name,
+                translation_source=translation_source,
+                exception_type=last_error_type,
+                error_message=last_error_message,
+                input_len=input_len,
+                output_len=0,
+                returned_original=True,
+            )
             raise RuntimeError(f"Translation failed for all candidate models: {last_error}")
 
         translated_text = str(data.get("translated_text", "")).strip()
@@ -388,6 +438,20 @@ class PolicyTranslationService:
             raise RuntimeError("Translation still contains unresolved preserve tokens.")
 
         if not self._is_plausible_translation(translated_text, target_lang):
+            self._trace(
+                "translation_result",
+                source_lang="ko",
+                target_lang=target_lang,
+                model_name=self.model_name,
+                translation_source="guard_fallback",
+                is_fallback=True,
+                guard_fallback=True,
+                exception_type=last_error_type,
+                error_message=last_error_message,
+                input_len=input_len,
+                output_len=len(text),
+                returned_original=True,
+            )
             return {
                 "language": target_lang,
                 "translated_text": text,
@@ -395,6 +459,20 @@ class PolicyTranslationService:
                 "is_fallback": True,
             }
 
+        self._trace(
+            "translation_result",
+            source_lang="ko",
+            target_lang=target_lang,
+            model_name=self.model_name,
+            translation_source=translation_source,
+            is_fallback=False,
+            guard_fallback=False,
+            exception_type=last_error_type,
+            error_message=last_error_message,
+            input_len=input_len,
+            output_len=len(translated_text),
+            returned_original=translated_text == text,
+        )
         return {
             "language": target_lang,
             "translated_text": translated_text,

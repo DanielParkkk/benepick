@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 import os
 from collections import OrderedDict
 from pathlib import Path
@@ -183,11 +184,32 @@ class PolicyAIEnricher:
         if cached is not None:
             return str(cached.get("translated_text", text))
 
-        result = self.translation_service.translate_text(
-            text=text,
-            policy_text=policy_text,
-            target_lang=target_lang,
-        )
+        try:
+            result = self.translation_service.translate_text(
+                text=text,
+                policy_text=policy_text,
+                target_lang=target_lang,
+            )
+        except Exception as exc:
+            if os.getenv("BENEPICK_TRANSLATION_TRACE", "0").strip() == "1":
+                print(
+                    "[TranslationTrace] "
+                    + json.dumps(
+                        {
+                            "event": "ai_enricher_exception",
+                            "source_lang": "ko",
+                            "target_lang": target_lang,
+                            "exception_type": type(exc).__name__,
+                            "error_message": str(exc).strip()[:300] or None,
+                            "input_len": len(text),
+                            "output_len": 0,
+                            "returned_original": True,
+                        },
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    )
+                )
+            raise
         guarded = self.guard.guard_translation(
             result,
             original_text=text,
