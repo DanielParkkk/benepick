@@ -303,6 +303,15 @@ function _toRegionCode(regionName) {
   return 'KR-11';
 }
 
+function getActiveLang() {
+  try {
+    const lang = String(localStorage.getItem('benefic_lang') || 'ko').toLowerCase().trim();
+    return lang || 'ko';
+  } catch (e) {
+    return 'ko';
+  }
+}
+
 function _toAnalyzeRequest(payload = {}) {
   const regionName = payload.region || payload.region_name || payload.거주지역 || '서울특별시';
   return {
@@ -314,6 +323,7 @@ function _toAnalyzeRequest(payload = {}) {
     employment_status: _toEmploymentStatus(payload.employment_status || payload.employment),
     housing_status: 'MONTHLY_RENT',
     interest_tags: Array.isArray(payload.intent_tags) ? payload.intent_tags : [],
+    lang_code: getActiveLang(),
   };
 }
 
@@ -441,7 +451,7 @@ async function _fetchDetailFromBackend(policyId) {
   if (!useBackend) return null;
 
   try {
-    const res = await fetch(`${API_BASE}/api/v1/policies/${encodeURIComponent(policyId)}/detail?lang=ko`, {
+    const res = await fetch(`${API_BASE}/api/v1/policies/${encodeURIComponent(policyId)}/detail?lang=${encodeURIComponent(getActiveLang())}`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
     });
@@ -469,7 +479,7 @@ function _mapLegacyPath(path, body) {
     const q = params.get('q') || '';
     const size = params.get('top_k') || '20';
     return {
-      url: `/api/v1/policies/search?${new URLSearchParams({ q, size, lang: 'ko' }).toString()}`,
+      url: `/api/v1/policies/search?${new URLSearchParams({ q, size, lang: getActiveLang() }).toString()}`,
       method: 'GET',
       transform: _toLegacySearchResponse,
     };
@@ -479,7 +489,7 @@ function _mapLegacyPath(path, body) {
     const q = params.get('keyword') || '';
     const size = params.get('limit') || '20';
     return {
-      url: `/api/v1/policies/search?${new URLSearchParams({ q, size, lang: 'ko' }).toString()}`,
+      url: `/api/v1/policies/search?${new URLSearchParams({ q, size, lang: getActiveLang() }).toString()}`,
       method: 'GET',
       transform: _toLegacySearchResponse,
     };
